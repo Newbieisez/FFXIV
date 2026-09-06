@@ -206,8 +206,8 @@ static LicenseTier ParseTier(string text)
         ? tier
         : throw new ArgumentException("--tier must be FreeTrial, Standard, Pro, or Lifetime.");
 
-static IReadOnlySet<string> ParseFeatures(string text)
-    => new HashSet<string>(
+static HashSet<string> ParseFeatures(string text)
+    => new(
         text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.ToLowerInvariant()),
