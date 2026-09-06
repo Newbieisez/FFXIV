@@ -1,0 +1,26 @@
+# Build output
+bin/
+obj/
+artifacts/
+TestResults/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Local/runtime settings
+*.local.json
+settings.json
+EZBuddy.settings.json
+
+# Logs and dumps
+*.log
+*.dmp
+
+# Secrets
+.env
+.env.*
+secrets.json
