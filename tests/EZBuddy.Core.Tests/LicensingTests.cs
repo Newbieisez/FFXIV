@@ -74,7 +74,7 @@ public sealed class LicensingTests
             hardwareId: "ABC123",
             issuedUtc: now.AddMinutes(-1),
             expiresUtc: now.AddDays(7),
-            features: ["core", "utility"]));
+            features: new HashSet<string>(["core", "utility"], StringComparer.OrdinalIgnoreCase)));
 
         var serialized = JsonSerializer.Serialize(entitlement, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var store = new MemoryLicenseStore(serialized);
@@ -84,7 +84,7 @@ public sealed class LicensingTests
             new RsaLicenseTokenValidator(keys.PublicKeys, TimeSpan.Zero),
             utcNow: () => now);
 
-        await manager.InitializeAsync();
+        await manager.InitializeAsync(TestContext.Current.CancellationToken);
         LicenseRuntime.Configure(manager);
 
         Assert.True(LicenseExecutionGuard.Instance.CanExecute(ActivityCategory.Utility, out _));
