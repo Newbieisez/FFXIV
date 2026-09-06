@@ -14,6 +14,17 @@ public interface IRetainerBellCoordinator
         CancellationToken cancellationToken = default);
 }
 
+public sealed record RetainerBellAccessResult(
+    bool Success,
+    bool UsedLocalBell,
+    string Message);
+
+public interface IRetainerBellAccess
+{
+    Task<RetainerBellAccessResult> EnsureBellOpenAsync(
+        CancellationToken cancellationToken = default);
+}
+
 public interface IVentureCatalogue
 {
     VentureDefinition? Get(uint ventureId);
