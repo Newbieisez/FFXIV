@@ -2,13 +2,12 @@ using Buddy.Coroutines;
 using EZBuddy.Core.Engine;
 using EZBuddy.Core.Runtime;
 using EZBuddy.RebornBuddy.Adapters;
-using ff14bot.AClasses;
 using ff14bot.Behavior;
 using TreeSharp;
 
 namespace EZBuddy.BotBase;
 
-public sealed class EZBuddyBotBase : BotBase
+public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
 {
     private Composite? _root;
 
