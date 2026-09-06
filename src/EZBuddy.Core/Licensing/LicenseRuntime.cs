@@ -48,34 +48,53 @@ public static class LicenseRuntime
         => StatusChanged?.Invoke(null, status);
 }
 
+public sealed class RuntimeLicenseStatusProvider : ILicenseStatusProvider
+{
+    public static RuntimeLicenseStatusProvider Instance { get; } = new();
+
+    private RuntimeLicenseStatusProvider() { }
+
+    public LicenseStatus? CurrentStatus => LicenseRuntime.CurrentStatus;
+
+    public void NotifyLicenseRequired() => LicenseRuntime.NotifyLicenseRequired();
+}
+
 public sealed class LicenseExecutionGuard : IExecutionGate
 {
-    public static LicenseExecutionGuard Instance { get; } = new();
+    private readonly ILicenseStatusProvider _statusProvider;
+    private readonly Func<DateTimeOffset> _utcNow;
 
-    private LicenseExecutionGuard() { }
+    public static LicenseExecutionGuard Instance { get; } = new(RuntimeLicenseStatusProvider.Instance);
+
+    public LicenseExecutionGuard(
+        ILicenseStatusProvider statusProvider,
+        Func<DateTimeOffset>? utcNow = null)
+    {
+        _statusProvider = statusProvider ?? throw new ArgumentNullException(nameof(statusProvider));
+        _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+    }
 
     public bool CanExecute(ActivityCategory category, out string message)
     {
-        var manager = LicenseRuntime.Manager;
-        if (manager is null)
+        var status = _statusProvider.CurrentStatus;
+        if (status is null)
         {
             message = "EZBuddy licensing has not been initialized.";
-            LicenseRuntime.NotifyLicenseRequired();
+            _statusProvider.NotifyLicenseRequired();
             return false;
         }
 
-        var status = manager.CurrentStatus;
         if (!status.IsValid)
         {
             message = status.Message;
-            LicenseRuntime.NotifyLicenseRequired();
+            _statusProvider.NotifyLicenseRequired();
             return false;
         }
 
-        if (status.ExpiresUtc is { } expiresUtc && expiresUtc <= DateTimeOffset.UtcNow)
+        if (status.ExpiresUtc is { } expiresUtc && expiresUtc <= _utcNow())
         {
             message = $"License expired on {expiresUtc:yyyy-MM-dd HH:mm} UTC.";
-            LicenseRuntime.NotifyLicenseRequired();
+            _statusProvider.NotifyLicenseRequired();
             return false;
         }
 
@@ -83,7 +102,7 @@ public sealed class LicenseExecutionGuard : IExecutionGate
         if (!status.HasFeature(featureKey))
         {
             message = $"Your {status.Tier} license does not include the '{featureKey}' feature.";
-            LicenseRuntime.NotifyLicenseRequired();
+            _statusProvider.NotifyLicenseRequired();
             return false;
         }
 
