@@ -71,6 +71,12 @@ public interface IOnlineLicenseClient
     Task<string?> RefreshLeaseAsync(string currentLicenseId, string hardwareId, CancellationToken cancellationToken = default);
 }
 
+public interface ILicenseStatusProvider
+{
+    LicenseStatus? CurrentStatus { get; }
+    void NotifyLicenseRequired();
+}
+
 public interface IExecutionGate
 {
     bool CanExecute(ActivityCategory category, out string message);
