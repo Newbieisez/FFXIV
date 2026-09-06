@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using EZBuddy.Core.Licensing;
 
 namespace EZBuddy.Core.Engine;
 
@@ -8,14 +9,16 @@ public sealed class ActivityQueueEngine
     private readonly LinkedList<QueuedActivity> _queue = new();
     private readonly ConcurrentDictionary<Guid, ActivityRuntimeSnapshot> _snapshots = new();
     private readonly IActivityTelemetrySink _telemetry;
+    private readonly IExecutionGate _executionGate;
     private readonly SemaphoreSlim _tickGate = new(1, 1);
     private CancellationTokenSource _engineCts = new();
     private QueuedActivity? _current;
     private bool _gentleStopRequested;
 
-    public ActivityQueueEngine(IActivityTelemetrySink? telemetry = null)
+    public ActivityQueueEngine(IActivityTelemetrySink? telemetry = null, IExecutionGate? executionGate = null)
     {
         _telemetry = telemetry ?? NullActivityTelemetrySink.Instance;
+        _executionGate = executionGate ?? AllowAllExecutionGate.Instance;
     }
 
     public bool IsStarted { get; private set; }
@@ -216,6 +219,14 @@ public sealed class ActivityQueueEngine
             if (current is null)
             {
                 return ExecutionResult.Yield("Activity queue is empty.");
+            }
+
+            if (!_executionGate.CanExecute(current.Item.Activity.Category, out var licenseMessage))
+            {
+                await SafeHaltAsync(current, CancellationToken.None).ConfigureAwait(false);
+                await SetStateAsync(current, ActivityState.Blocked, $"License blocked execution: {licenseMessage}", CancellationToken.None).ConfigureAwait(false);
+                IsPaused = true;
+                return ExecutionResult.Block(licenseMessage);
             }
 
             if (_gentleStopRequested)
