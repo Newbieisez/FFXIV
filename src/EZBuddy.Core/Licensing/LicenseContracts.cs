@@ -27,7 +27,7 @@ public sealed record LicenseEntitlement(
     LicenseTier Tier,
     DateTimeOffset IssuedUtc,
     DateTimeOffset? ExpiresUtc,
-    IReadOnlySet<string> Features,
+    HashSet<string> Features,
     string Signature,
     string KeyId,
     int SchemaVersion = 1);
