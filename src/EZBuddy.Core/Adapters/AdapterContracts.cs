@@ -45,6 +45,11 @@ public interface IOrderBotAdapter : IEZAdapter
     Task<bool> IsProfileRunningAsync(CancellationToken cancellationToken = default);
 }
 
+public interface IRetainerSweepAdapter : IEZAdapter
+{
+    Task<bool> SweepCompletedVenturesAsync(CancellationToken cancellationToken = default);
+}
+
 public interface IPluginHookAdapter : IEZAdapter
 {
     IReadOnlyCollection<string> SupportedOperations { get; }
