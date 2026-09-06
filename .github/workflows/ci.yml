@@ -30,17 +30,24 @@ jobs:
       - name: Restore botbase
         run: dotnet restore src/EZBuddy.BotBase/EZBuddy.BotBase.csproj -p:NuGetAudit=true -p:NuGetAuditMode=all
 
+      - name: Restore license issuer
+        run: dotnet restore tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj -p:NuGetAudit=true -p:NuGetAuditMode=all
+
       - name: Build plugin
         run: dotnet build src/EZBuddy.Plugin/EZBuddy.Plugin.csproj -c Release --no-restore -p:Platform=x64
 
       - name: Build botbase
         run: dotnet build src/EZBuddy.BotBase/EZBuddy.BotBase.csproj -c Release --no-restore -p:Platform=x64
 
+      - name: Build license issuer
+        run: dotnet build tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj -c Release --no-restore
+
       - name: Report vulnerable packages
         shell: pwsh
         run: |
           dotnet list src/EZBuddy.Plugin/EZBuddy.Plugin.csproj package --vulnerable --include-transitive
           dotnet list src/EZBuddy.BotBase/EZBuddy.BotBase.csproj package --vulnerable --include-transitive
+          dotnet list tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj package --vulnerable --include-transitive
 
       - name: Assemble package
         shell: pwsh
@@ -52,8 +59,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path $plugin | Out-Null
           New-Item -ItemType Directory -Force -Path $botbase | Out-Null
 
-          Copy-Item 'src/EZBuddy.Plugin/bin/Release/net10.0-windows/*' $plugin -Recurse -Force
-          Copy-Item 'src/EZBuddy.BotBase/bin/Release/net10.0-windows/*' $botbase -Recurse -Force
+          Copy-Item 'src/EZBuddy.Plugin/bin/x64/Release/net10.0-windows/*' $plugin -Recurse -Force
+          Copy-Item 'src/EZBuddy.BotBase/bin/x64/Release/net10.0-windows/*' $botbase -Recurse -Force
           Copy-Item 'README.md' $root -Force
           Copy-Item 'docs' $root -Recurse -Force
 
@@ -64,5 +71,13 @@ jobs:
         with:
           name: EZBuddy-package
           path: artifacts/EZBuddy.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload license issuer
+        uses: actions/upload-artifact@v4
+        with:
+          name: EZBuddy-license-issuer
+          path: tools/EZBuddy.LicenseIssuer/bin/Release/net10.0/**
           if-no-files-found: error
           retention-days: 14
