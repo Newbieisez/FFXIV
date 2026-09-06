@@ -23,7 +23,7 @@ public sealed class RebornBuddyTelemetryProvider : IHostTelemetryProvider
         var statuses = await EZBuddyRuntime.Adapters.GetStatusesAsync(cancellationToken).ConfigureAwait(false);
         var findings = await _conflictGuard.ScanAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        var player = Core.Player;
+        var player = ff14bot.Core.Player;
         var characterName = player?.Name ?? "Not connected";
         var locationLabel = player is null ? "—" : $"Zone {WorldManager.ZoneId}";
 
@@ -44,7 +44,7 @@ public sealed class RebornBuddyTelemetryProvider : IHostTelemetryProvider
             routineActive,
             GilEarned: 0,
             SessionRuntime: DateTimeOffset.UtcNow - _startedAt,
-            ActiveHooks: statuses.Count(status => status.Health is Core.Adapters.AdapterHealth.Ready or Core.Adapters.AdapterHealth.Busy),
+            ActiveHooks: statuses.Count(status => status.Health is EZBuddy.Core.Adapters.AdapterHealth.Ready or EZBuddy.Core.Adapters.AdapterHealth.Busy),
             WarningCount: findings.Count(finding => finding.Severity is ConflictSeverity.Warning or ConflictSeverity.Critical));
     }
 }
