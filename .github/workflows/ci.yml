@@ -46,7 +46,7 @@ jobs:
         run: dotnet build tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj -c Release --no-restore
 
       - name: Run core tests
-        run: dotnet test tests/EZBuddy.Core.Tests/EZBuddy.Core.Tests.csproj -c Release --no-restore --logger "trx;LogFileName=core-tests.trx"
+        run: dotnet test --project tests/EZBuddy.Core.Tests/EZBuddy.Core.Tests.csproj -c Release --no-restore
 
       - name: Report vulnerable packages
         shell: pwsh
