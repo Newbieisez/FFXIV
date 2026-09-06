@@ -129,6 +129,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         EZBuddyRuntime.Adapters.Register(new MagitekAdapter());
         EZBuddyRuntime.Adapters.Register(new OrderBotAdapter());
         EZBuddyRuntime.Adapters.Register(new LisbethAdapter());
+        EZBuddyRuntime.Adapters.Register(new LlamaRetainerSweepAdapter());
     }
 
     private void CloseDashboard()
