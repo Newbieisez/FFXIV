@@ -139,6 +139,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _selectedWorkspace, value);
     }
 
+    public void NavigateToLicense()
+    {
+        foreach (var module in NavigationModules)
+        {
+            module.IsSelected = string.Equals(module.Key, "License", StringComparison.OrdinalIgnoreCase);
+        }
+
+        SelectedWorkspace = "License & Trial Activation";
+    }
+
     public void StartAutoRefresh()
     {
         if (!_refreshTimer.IsEnabled)
@@ -290,6 +300,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         yield return Nav("Core", "Dashboard", "▦", "Dashboard", false, true);
         yield return Nav("Core", "Activity Queue", "≡", "Queue", false);
+        yield return Nav("Core", "License & Trial Activation", "◆", "License", false);
         yield return Nav("Core", "Progression Planner", "✓", "Progression", true);
         yield return Nav("Core", "Hooks & Integrations", "↔", "Hooks", false);
         yield return Nav("Core", "Diagnostics & Conflict Guard", "!", "Diagnostics", false);
