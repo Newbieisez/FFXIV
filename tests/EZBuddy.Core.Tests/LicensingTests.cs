@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using EZBuddy.Core.Engine;
 using EZBuddy.Core.Licensing;
 
@@ -66,30 +65,25 @@ public sealed class LicensingTests
     }
 
     [Fact]
-    public async Task ExecutionGuardAllowsOnlyEntitledFeatures()
+    public void ExecutionGuardAllowsOnlyEntitledFeaturesWithoutHardwareOrFileMocks()
     {
-        using var keys = TestSigningKeys.Create();
         var now = DateTimeOffset.UtcNow;
-        var entitlement = keys.Sign(CreateEntitlement(
-            hardwareId: "ABC123",
-            issuedUtc: now.AddMinutes(-1),
-            expiresUtc: now.AddDays(7),
-            features: new HashSet<string>(["core", "utility"], StringComparer.OrdinalIgnoreCase)));
+        var status = new LicenseStatus(
+            IsValid: true,
+            Tier: LicenseTier.FreeTrial,
+            ExpiresUtc: now.AddDays(7),
+            Message: "Trial active.",
+            HardwareId: "opaque-test-hardware",
+            Source: LicenseValidationSource.OfflineToken,
+            Features: new HashSet<string>(["core", "utility"], StringComparer.OrdinalIgnoreCase));
 
-        var serialized = JsonSerializer.Serialize(entitlement, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        var store = new MemoryLicenseStore(serialized);
-        var manager = new LicenseManager(
-            new StaticHardwareIdentityProvider("ABC123"),
-            store,
-            new RsaLicenseTokenValidator(keys.PublicKeys, TimeSpan.Zero),
-            utcNow: () => now);
+        var provider = new StaticLicenseStatusProvider(status);
+        var guard = new LicenseExecutionGuard(provider, () => now);
 
-        await manager.InitializeAsync(TestContext.Current.CancellationToken);
-        LicenseRuntime.Configure(manager);
-
-        Assert.True(LicenseExecutionGuard.Instance.CanExecute(ActivityCategory.Utility, out _));
-        Assert.False(LicenseExecutionGuard.Instance.CanExecute(ActivityCategory.Duty, out var failure));
+        Assert.True(guard.CanExecute(ActivityCategory.Utility, out _));
+        Assert.False(guard.CanExecute(ActivityCategory.Duty, out var failure));
         Assert.Contains("does not include", failure, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, provider.LicenseRequiredNotifications);
     }
 
     private static LicenseEntitlement CreateEntitlement(
@@ -112,29 +106,12 @@ public sealed class LicensingTests
             SchemaVersion: 1);
     }
 
-    private sealed class StaticHardwareIdentityProvider(string hardwareId) : IHardwareIdentityProvider
+    private sealed class StaticLicenseStatusProvider(LicenseStatus? status) : ILicenseStatusProvider
     {
-        public string GetAnonymousHardwareId() => hardwareId;
-    }
+        public LicenseStatus? CurrentStatus { get; } = status;
+        public int LicenseRequiredNotifications { get; private set; }
 
-    private sealed class MemoryLicenseStore(string? value = null) : ILicenseStore
-    {
-        private string? _value = value;
-
-        public Task<string?> ReadAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(_value);
-
-        public Task WriteAsync(string serializedEntitlement, CancellationToken cancellationToken = default)
-        {
-            _value = serializedEntitlement;
-            return Task.CompletedTask;
-        }
-
-        public Task DeleteAsync(CancellationToken cancellationToken = default)
-        {
-            _value = null;
-            return Task.CompletedTask;
-        }
+        public void NotifyLicenseRequired() => LicenseRequiredNotifications++;
     }
 
     private sealed class TestSigningKeys : IDisposable
