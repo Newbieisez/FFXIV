@@ -6,9 +6,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <RootNamespace>EZBuddy.UI</RootNamespace>
     <AssemblyName>EZBuddy.UI</AssemblyName>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest</AnalysisLevel>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\EZBuddy.Core\EZBuddy.Core.csproj" />
+  </ItemGroup>
 </Project>
