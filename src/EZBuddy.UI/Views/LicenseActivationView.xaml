@@ -1,0 +1,116 @@
+<UserControl x:Class="EZBuddy.UI.Views.LicenseActivationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Visibility="{Binding IsLicenseWorkspace, Converter={StaticResource LicenseBoolToVisibility}}">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="../Themes/EZBuddyTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="LicenseBoolToVisibility"/>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource BackgroundBrush}" Padding="14">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="980" HorizontalAlignment="Left">
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="LICENSE &amp; TRIAL ACTIVATION" Style="{StaticResource CaptionStyle}"/>
+                        <TextBlock Text="Activate EZBuddy" FontSize="22" FontWeight="SemiBold" Margin="0,3,0,0"/>
+                        <TextBlock Text="Trials and paid licenses use signed entitlements bound to this anonymous machine ID."
+                                   Foreground="{StaticResource TextMutedBrush}" FontSize="11" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Refresh" Command="{Binding RefreshLicenseCommand}" Style="{StaticResource IconButtonStyle}"/>
+                </Grid>
+
+                <Border Style="{StaticResource GoldCardStyle}" Margin="0,0,0,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="TIER" Style="{StaticResource CaptionStyle}"/>
+                            <TextBlock Text="{Binding LicenseTier}" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="EXPIRATION" Style="{StaticResource CaptionStyle}"/>
+                            <TextBlock Text="{Binding LicenseExpiration}" FontSize="13" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="STATUS" Style="{StaticResource CaptionStyle}"/>
+                            <TextBlock Text="{Binding LicenseStatusMessage}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="THIS MACHINE" Style="{StaticResource SectionTitleStyle}"/>
+                        <TextBlock Text="Send this anonymous hardware ID when you request an offline trial. Raw CPU and motherboard values are never displayed."
+                                   Foreground="{StaticResource TextMutedBrush}" FontSize="10" Margin="0,3,0,8"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding LicenseHardwareId}" IsReadOnly="True" FontFamily="Consolas" FontSize="11"
+                                     Background="#16171A" Foreground="{StaticResource TextPrimaryBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                     Padding="8,6"/>
+                            <Button Grid.Column="1" Content="Copy HWID" Command="{Binding CopyHardwareIdCommand}"
+                                    Style="{StaticResource IconButtonStyle}" Margin="8,0,0,0"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1*"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="1.3*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="START A TRIAL" Style="{StaticResource SectionTitleStyle}"/>
+                            <TextBlock Text="If this build is connected to the EZBuddy license service, enter your email to request a trial for this machine."
+                                       Foreground="{StaticResource TextMutedBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,3,0,10"/>
+                            <TextBlock Text="EMAIL" Style="{StaticResource CaptionStyle}"/>
+                            <TextBox Text="{Binding TrialEmail, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10"
+                                     Background="#16171A" Foreground="{StaticResource TextPrimaryBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                     Padding="8,6"/>
+                            <Button Content="Request Trial" Command="{Binding ActivateTrialCommand}" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Left"/>
+                            <TextBlock Text="No API configured? Use the offline signed entitlement on the right."
+                                       Foreground="{StaticResource TextMutedBrush}" FontSize="9" Margin="0,9,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="INSTALL SIGNED LICENSE" Style="{StaticResource SectionTitleStyle}"/>
+                            <TextBlock Text="Paste the complete contents of an EZBuddy .ezlic entitlement. The client verifies the RSA signature and machine binding before saving it."
+                                       Foreground="{StaticResource TextMutedBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,3,0,8"/>
+                            <TextBox Text="{Binding LicenseTokenText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto" Height="160" FontFamily="Consolas" FontSize="10"
+                                     Background="#111216" Foreground="{StaticResource TextPrimaryBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                     Padding="8"/>
+                            <Button Content="Install License" Command="{Binding InstallLicenseCommand}" Style="{StaticResource PrimaryButtonStyle}"
+                                    HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border Margin="0,12,0,0" Padding="10" Background="#241E14" BorderBrush="#59462C" BorderThickness="1" CornerRadius="4">
+                    <TextBlock Text="Security note: EZBuddy contains only the public verification key. The private signing key must remain outside the repository and outside distributed client packages."
+                               Foreground="{StaticResource GoldBrightBrush}" FontSize="10" TextWrapping="Wrap"/>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>
