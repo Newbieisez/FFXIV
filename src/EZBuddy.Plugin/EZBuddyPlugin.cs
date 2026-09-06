@@ -13,6 +13,7 @@ public sealed class EZBuddyPlugin : BotPlugin
     private static readonly object WindowSync = new();
     private MainWindow? _window;
     private LicenseManager? _licenseManager;
+    private HttpOnlineLicenseClient? _onlineLicenseClient;
 
     public override string Author => "EZ";
     public override string Name => "EZBuddy Suite";
@@ -50,6 +51,8 @@ public sealed class EZBuddyPlugin : BotPlugin
         LicenseRuntime.LicenseRequired -= OnLicenseRequired;
         CloseDashboard();
         EZBuddyRuntime.Queue.Pause();
+        _onlineLicenseClient?.Dispose();
+        _onlineLicenseClient = null;
         ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; activity engine paused.");
     }
 
@@ -62,7 +65,19 @@ public sealed class EZBuddyPlugin : BotPlugin
             var hardware = new WindowsHardwareIdentityProvider();
             var store = new FileLicenseStore();
             var validator = new RsaLicenseTokenValidator(LicenseSigningKeys.PublicKeys);
-            _licenseManager = new LicenseManager(hardware, store, validator);
+
+            IOnlineLicenseClient? onlineClient = null;
+            var apiText = Environment.GetEnvironmentVariable("EZBUDDY_LICENSE_API");
+            if (!string.IsNullOrWhiteSpace(apiText) &&
+                Uri.TryCreate(apiText, UriKind.Absolute, out var apiUri) &&
+                string.Equals(apiUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                _onlineLicenseClient?.Dispose();
+                _onlineLicenseClient = new HttpOnlineLicenseClient(apiUri);
+                onlineClient = _onlineLicenseClient;
+            }
+
+            _licenseManager = new LicenseManager(hardware, store, validator, onlineClient);
             LicenseRuntime.Configure(_licenseManager);
             var status = _licenseManager.InitializeAsync().GetAwaiter().GetResult();
             ff14bot.Helpers.Logging.Write($"[EZBuddy Licensing] {status.Message}");
