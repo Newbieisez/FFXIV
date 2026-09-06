@@ -61,8 +61,49 @@ public sealed class VenturePlanEvaluator
         };
     }
 
+    public async Task<VenturePlanEvaluation> EvaluateNextAsync(
+        VenturePlan plan,
+        RetainerDescriptor retainer,
+        VentureExecutionContext executionContext,
+        RetainerSafetySettings safetySettings,
+        int startIndex = 0,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(retainer);
+        ArgumentNullException.ThrowIfNull(executionContext);
+        ArgumentNullException.ThrowIfNull(safetySettings);
+
+        if (executionContext.Retainer.RetainerId != retainer.RetainerId)
+        {
+            return new VenturePlanEvaluation(null, false, "Safety context belongs to a different retainer.");
+        }
+
+        if (!PassesSafetyGates(executionContext, safetySettings, out var safetyReason))
+        {
+            return new VenturePlanEvaluation(null, false, $"Venture dispatch blocked by safety gate: {safetyReason}");
+        }
+
+        return await EvaluateNextAsync(plan, retainer, startIndex, cancellationToken).ConfigureAwait(false);
+    }
+
     public static bool PassesSafetyGates(VentureExecutionContext context, RetainerSafetySettings settings, out string reason)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(settings);
+
+        if (settings.MinimumFreeInventorySlots < 0 || settings.MinimumFreeInventorySlotsForQuickExploration < 0)
+        {
+            reason = "Inventory safety thresholds cannot be negative.";
+            return false;
+        }
+
+        if (settings.MinimumVentureTokens < 0)
+        {
+            reason = "Venture-token safety threshold cannot be negative.";
+            return false;
+        }
+
         if (context.EmergencyStopRequested)
         {
             reason = "Emergency stop requested.";
@@ -100,6 +141,30 @@ public sealed class VenturePlanEvaluator
         }
 
         reason = "Safety gates passed.";
+        return true;
+    }
+
+    public static bool CanDispatchQuickExploration(
+        VentureExecutionContext context,
+        RetainerSafetySettings settings,
+        out string reason)
+    {
+        if (!PassesSafetyGates(context, settings, out reason))
+        {
+            return false;
+        }
+
+        var quickExplorationFloor = Math.Max(
+            settings.MinimumFreeInventorySlots,
+            settings.MinimumFreeInventorySlotsForQuickExploration);
+
+        if (context.FreeInventorySlots < quickExplorationFloor)
+        {
+            reason = $"Quick Exploration requires at least {quickExplorationFloor} free inventory slots; only {context.FreeInventorySlots} are available.";
+            return false;
+        }
+
+        reason = "Quick Exploration inventory and venture-token safety gates passed.";
         return true;
     }
 
