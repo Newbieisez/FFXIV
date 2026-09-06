@@ -77,9 +77,10 @@ public sealed record RetainerSafetySettings(
     int MinimumFreeInventorySlots,
     int MinimumVentureTokens,
     bool RequireSafeClientState = true,
-    bool StopOnCriticalConflict = true)
+    bool StopOnCriticalConflict = true,
+    int MinimumFreeInventorySlotsForQuickExploration = 8)
 {
-    public static RetainerSafetySettings Default { get; } = new(5, 10);
+    public static RetainerSafetySettings Default { get; } = new(5, 10, MinimumFreeInventorySlotsForQuickExploration: 8);
 }
 
 public sealed record VentureExecutionContext(
