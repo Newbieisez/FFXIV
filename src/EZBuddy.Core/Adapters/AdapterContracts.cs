@@ -50,6 +50,19 @@ public interface IRetainerSweepAdapter : IEZAdapter
     Task<bool> SweepCompletedVenturesAsync(CancellationToken cancellationToken = default);
 }
 
+public interface IGrandCompanyAdapter : IEZAdapter
+{
+    Task<bool> EnsureVentureTokensAsync(
+        uint ventureItemId,
+        int currentQuantity,
+        int targetQuantity,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> RunExpertDeliveryAsync(
+        IReadOnlyCollection<uint> approvedItemIds,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IPluginHookAdapter : IEZAdapter
 {
     IReadOnlyCollection<string> SupportedOperations { get; }
