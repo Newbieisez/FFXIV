@@ -96,7 +96,7 @@ public sealed class LicensingTests
         string hardwareId,
         DateTimeOffset? issuedUtc = null,
         DateTimeOffset? expiresUtc = null,
-        IReadOnlySet<string>? features = null)
+        HashSet<string>? features = null)
     {
         var issued = issuedUtc ?? DateTimeOffset.UtcNow.AddMinutes(-1);
         return new LicenseEntitlement(
