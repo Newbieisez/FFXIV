@@ -93,7 +93,7 @@ public sealed class RebornBuddyProgressionScanner : IProgressionStateReader
             return new ProgressionNodeInspection(node, ProgressionCompletionState.Completed, "Quest is completed.", DateTimeOffset.UtcNow);
         }
 
-        if (QuestLogManager.HasQuest(node.SheetId))
+        if (QuestLogManager.HasQuest(checked((int)node.SheetId)))
         {
             return new ProgressionNodeInspection(node, ProgressionCompletionState.Active, "Quest is currently active.", DateTimeOffset.UtcNow);
         }
