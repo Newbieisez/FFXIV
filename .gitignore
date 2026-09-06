@@ -24,3 +24,11 @@ EZBuddy.settings.json
 .env
 .env.*
 secrets.json
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Issued EZBuddy entitlements
+*.ezlic
+EZBuddy.lic
