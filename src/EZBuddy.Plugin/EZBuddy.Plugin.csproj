@@ -17,6 +17,6 @@
     <ProjectReference Include="..\EZBuddy.Core\EZBuddy.Core.csproj" />
     <ProjectReference Include="..\EZBuddy.RebornBuddy\EZBuddy.RebornBuddy.csproj" />
     <ProjectReference Include="..\EZBuddy.UI\EZBuddy.UI.csproj" />
-    <PackageReference Include="RebornBuddy.ReferenceAssemblies" Version="1.0.904" PrivateAssets="all" />
+    <PackageReference Include="RebornBuddy.ReferenceAssemblies" Version="1.0.9037-rc.1" PrivateAssets="all" />
   </ItemGroup>
 </Project>
