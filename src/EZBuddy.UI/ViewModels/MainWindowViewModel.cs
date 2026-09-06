@@ -36,7 +36,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         NavigationModules = new ObservableCollection<NavigationModule>(CreateNavigation());
         PipelineSteps = new ObservableCollection<PipelineStep>();
-        ActivityQueue = new ObservableCollection<Models.ActivityQueueItem>();
+        ActivityQueue = new ObservableCollection<EZBuddy.UI.Models.ActivityQueueItem>();
         Integrations = new ObservableCollection<IntegrationHealthItem>();
 
         SelectModuleCommand = new RelayCommand(SelectModule);
@@ -55,7 +55,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<NavigationModule> NavigationModules { get; }
     public ObservableCollection<PipelineStep> PipelineSteps { get; }
-    public ObservableCollection<Models.ActivityQueueItem> ActivityQueue { get; }
+    public ObservableCollection<EZBuddy.UI.Models.ActivityQueueItem> ActivityQueue { get; }
     public ObservableCollection<IntegrationHealthItem> Integrations { get; }
 
     public ICommand SelectModuleCommand { get; }
@@ -227,7 +227,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var order = 1;
         foreach (var snapshot in activeAndPending)
         {
-            ActivityQueue.Add(new Models.ActivityQueueItem
+            ActivityQueue.Add(new EZBuddy.UI.Models.ActivityQueueItem
             {
                 Id = snapshot.ActivityId,
                 Title = snapshot.Name,
@@ -290,14 +290,36 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         yield return Nav("Core", "Dashboard", "▦", "Dashboard", false, true);
         yield return Nav("Core", "Activity Queue", "≡", "Queue", false);
+        yield return Nav("Core", "Progression Planner", "✓", "Progression", true);
+        yield return Nav("Core", "Hooks & Integrations", "↔", "Hooks", false);
         yield return Nav("Core", "Diagnostics & Conflict Guard", "!", "Diagnostics", false);
-        yield return Nav("Engines", "Duty & Dungeons", "◆", "Duty", true);
-        yield return Nav("Engines", "Gathering & Crafting", "◇", "CraftGather", true);
-        yield return Nav("Engines", "Relics & Events", "✦", "RelicsEvents", true);
-        yield return Nav("Engines", "Triple Triad", "▣", "TripleTriad", true);
-        yield return Nav("Lifestyle", "Retainers & Marketboard", "◎", "RetainersMarket", true);
+
+        yield return Nav("Instances", "Duty & Dungeons", "◆", "Duty", true);
+        yield return Nav("Instances", "Deep Dungeons", "⬡", "DeepDungeons", true);
+        yield return Nav("Instances", "Treasure Hunts", "✧", "TreasureHunts", true);
+
+        yield return Nav("World", "Field Operations", "◉", "FieldOperations", true);
+        yield return Nav("World", "Shared FATE & Gemstones", "◇", "SharedFates", true);
+        yield return Nav("World", "Relics & Events", "✦", "RelicsEvents", true);
+
+        yield return Nav("Economy", "Gathering & Crafting", "⌁", "CraftGather", true);
+        yield return Nav("Economy", "Retainers & Marketboard", "◎", "RetainersMarket", true);
+        yield return Nav("Economy", "Airship & Submersibles", "▲", "Voyages", true);
+        yield return Nav("Economy", "Materia Optimization", "◌", "Materia", true);
+        yield return Nav("Economy", "Mass Desynthesis", "⌫", "Desynthesis", true);
+        yield return Nav("Economy", "Levequest Auto-Burners", "▤", "Levequests", true);
+        yield return Nav("Economy", "Doman Enclave", "◫", "DomanEnclave", true);
+
+        yield return Nav("Collections", "Triple Triad", "▣", "TripleTriad", true);
+        yield return Nav("Collections", "Wondrous Tails", "☆", "WondrousTails", true);
+
         yield return Nav("Lifestyle", "Island Sanctuary", "△", "Sanctuary", true);
+        yield return Nav("Lifestyle", "Housing & Gardening", "⌂", "HousingGardening", true);
         yield return Nav("Lifestyle", "Dailies & Tribes", "◈", "Dailies", true);
+
+        yield return Nav("Safety", "Social Safety Monitor", "⚑", "SocialSafety", true);
+        yield return Nav("Safety", "Session Safety & Breaks", "◷", "SessionSafety", true);
+        yield return Nav("Safety", "Webhook & Push Alerts", "●", "Notifications", true);
     }
 
     private static NavigationModule Nav(string group, string name, string icon, string key, bool canToggle, bool selected = false)
@@ -308,7 +330,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             Icon = icon,
             Key = key,
             CanToggle = canToggle,
-            IsEnabled = !canToggle || key is "Duty" or "RetainersMarket",
+            IsEnabled = !canToggle || key is "Progression" or "Duty" or "RetainersMarket",
             IsSelected = selected
         };
 }
