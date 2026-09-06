@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 using System.Windows.Threading;
 using EZBuddy.Core.Engine;
+using EZBuddy.Core.Licensing;
 using EZBuddy.Core.Runtime;
 using EZBuddy.UI.Infrastructure;
 using EZBuddy.UI.Models;
@@ -29,6 +30,13 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private int _activeHooks;
     private int _warningCount;
     private string _selectedWorkspace = "Dashboard";
+    private bool _isLicenseWorkspace;
+    private string _licenseStatusMessage = "License status has not been evaluated.";
+    private string _licenseTier = "None";
+    private string _licenseExpiration = "—";
+    private string _licenseHardwareId = "—";
+    private string _licenseTokenText = string.Empty;
+    private string _trialEmail = string.Empty;
 
     public MainWindowViewModel(IHostTelemetryProvider? hostTelemetryProvider = null)
     {
@@ -45,6 +53,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ResumeCommand = new RelayCommand(() => EZBuddyRuntime.Queue.Resume());
         EmergencyStopCommand = new AsyncRelayCommand(() => EZBuddyRuntime.Queue.EmergencyStopAsync());
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
+        InstallLicenseCommand = new AsyncRelayCommand(InstallLicenseAsync);
+        ActivateTrialCommand = new AsyncRelayCommand(ActivateTrialAsync);
+        RefreshLicenseCommand = new AsyncRelayCommand(RefreshLicenseAsync);
+        CopyHardwareIdCommand = new RelayCommand(CopyHardwareId);
+
+        LicenseRuntime.StatusChanged += OnLicenseStatusChanged;
+        LicenseRuntime.LicenseRequired += OnLicenseRequired;
+        ApplyLicenseStatus(LicenseRuntime.CurrentStatus);
 
         _refreshTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -64,6 +80,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public ICommand ResumeCommand { get; }
     public ICommand EmergencyStopCommand { get; }
     public ICommand RefreshCommand { get; }
+    public ICommand InstallLicenseCommand { get; }
+    public ICommand ActivateTrialCommand { get; }
+    public ICommand RefreshLicenseCommand { get; }
+    public ICommand CopyHardwareIdCommand { get; }
 
     public string ApplicationStatus
     {
@@ -139,6 +159,48 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _selectedWorkspace, value);
     }
 
+    public bool IsLicenseWorkspace
+    {
+        get => _isLicenseWorkspace;
+        private set => SetProperty(ref _isLicenseWorkspace, value);
+    }
+
+    public string LicenseStatusMessage
+    {
+        get => _licenseStatusMessage;
+        private set => SetProperty(ref _licenseStatusMessage, value);
+    }
+
+    public string LicenseTier
+    {
+        get => _licenseTier;
+        private set => SetProperty(ref _licenseTier, value);
+    }
+
+    public string LicenseExpiration
+    {
+        get => _licenseExpiration;
+        private set => SetProperty(ref _licenseExpiration, value);
+    }
+
+    public string LicenseHardwareId
+    {
+        get => _licenseHardwareId;
+        private set => SetProperty(ref _licenseHardwareId, value);
+    }
+
+    public string LicenseTokenText
+    {
+        get => _licenseTokenText;
+        set => SetProperty(ref _licenseTokenText, value);
+    }
+
+    public string TrialEmail
+    {
+        get => _trialEmail;
+        set => SetProperty(ref _trialEmail, value);
+    }
+
     public void NavigateToLicense()
     {
         foreach (var module in NavigationModules)
@@ -147,6 +209,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         SelectedWorkspace = "License & Trial Activation";
+        IsLicenseWorkspace = true;
+        ApplyLicenseStatus(LicenseRuntime.CurrentStatus);
     }
 
     public void StartAutoRefresh()
@@ -174,6 +238,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             await RefreshTelemetryAsync().ConfigureAwait(true);
             RefreshQueue();
             await RefreshIntegrationsAsync().ConfigureAwait(true);
+            ApplyLicenseStatus(LicenseRuntime.CurrentStatus);
         }
         finally
         {
@@ -185,6 +250,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         _refreshTimer.Stop();
         _refreshTimer.Tick -= OnRefreshTick;
+        LicenseRuntime.StatusChanged -= OnLicenseStatusChanged;
+        LicenseRuntime.LicenseRequired -= OnLicenseRequired;
         GC.SuppressFinalize(this);
     }
 
@@ -273,6 +340,119 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    private async Task InstallLicenseAsync()
+    {
+        var manager = LicenseRuntime.Manager;
+        if (manager is null)
+        {
+            LicenseStatusMessage = "Licensing is not initialized.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(LicenseTokenText))
+        {
+            LicenseStatusMessage = "Paste the full .ezlic JSON entitlement before installing.";
+            return;
+        }
+
+        try
+        {
+            var status = await manager.InstallOfflineTokenAsync(LicenseTokenText).ConfigureAwait(true);
+            ApplyLicenseStatus(status);
+            if (status.IsValid)
+            {
+                LicenseTokenText = string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            LicenseStatusMessage = $"License install failed: {ex.Message}";
+        }
+    }
+
+    private async Task ActivateTrialAsync()
+    {
+        var manager = LicenseRuntime.Manager;
+        if (manager is null)
+        {
+            LicenseStatusMessage = "Licensing is not initialized.";
+            return;
+        }
+
+        var status = await manager.ActivateOnlineTrialAsync(TrialEmail).ConfigureAwait(true);
+        ApplyLicenseStatus(status);
+    }
+
+    private async Task RefreshLicenseAsync()
+    {
+        var manager = LicenseRuntime.Manager;
+        if (manager is null)
+        {
+            LicenseStatusMessage = "Licensing is not initialized.";
+            return;
+        }
+
+        var status = await manager.RefreshStatusAsync().ConfigureAwait(true);
+        ApplyLicenseStatus(status);
+    }
+
+    private void CopyHardwareId()
+    {
+        if (string.IsNullOrWhiteSpace(LicenseHardwareId) || LicenseHardwareId == "—")
+        {
+            return;
+        }
+
+        try
+        {
+            System.Windows.Clipboard.SetText(LicenseHardwareId);
+            LicenseStatusMessage = "Anonymous hardware ID copied to clipboard.";
+        }
+        catch
+        {
+            LicenseStatusMessage = "Unable to access the Windows clipboard.";
+        }
+    }
+
+    private void OnLicenseStatusChanged(object? sender, LicenseStatus status)
+        => DispatchToUi(() => ApplyLicenseStatus(status));
+
+    private void OnLicenseRequired(object? sender, LicenseStatus? status)
+        => DispatchToUi(() =>
+        {
+            NavigateToLicense();
+            ApplyLicenseStatus(status);
+        });
+
+    private void ApplyLicenseStatus(LicenseStatus? status)
+    {
+        if (status is null)
+        {
+            LicenseTier = "None";
+            LicenseExpiration = "—";
+            LicenseHardwareId = "—";
+            LicenseStatusMessage = "Licensing is not initialized.";
+            return;
+        }
+
+        LicenseTier = status.Tier.ToString();
+        LicenseExpiration = status.ExpiresUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "No expiration";
+        LicenseHardwareId = status.HardwareId;
+        LicenseStatusMessage = status.Message;
+    }
+
+    private static void DispatchToUi(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        dispatcher.BeginInvoke(action);
+    }
+
     private void SelectModule(object? parameter)
     {
         if (parameter is not NavigationModule selected)
@@ -286,6 +466,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         SelectedWorkspace = selected.Name;
+        IsLicenseWorkspace = string.Equals(selected.Key, "License", StringComparison.OrdinalIgnoreCase);
+        if (IsLicenseWorkspace)
+        {
+            ApplyLicenseStatus(LicenseRuntime.CurrentStatus);
+        }
     }
 
     private static void ToggleModule(object? parameter)
