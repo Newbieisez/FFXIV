@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using System.Windows.Threading;
+using EZBuddy.Core.Bundles;
 using EZBuddy.Core.Engine;
 using EZBuddy.Core.Licensing;
 using EZBuddy.Core.Runtime;
+using EZBuddy.Core.Settings;
 using EZBuddy.UI.Infrastructure;
 using EZBuddy.UI.Models;
 
@@ -17,6 +19,7 @@ public interface IHostTelemetryProvider
 public sealed class MainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly IHostTelemetryProvider? _hostTelemetryProvider;
+    private readonly IRunLoopController _runLoopController;
     private readonly DispatcherTimer _refreshTimer;
     private bool _refreshing;
     private string _applicationStatus = "Idle";
@@ -31,6 +34,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private int _warningCount;
     private string _selectedWorkspace = "Dashboard";
     private bool _isLicenseWorkspace;
+    private bool _isFirstLoopWorkspace;
+    private string _runLoopState = RunLoopState.Idle.ToString();
+    private string _runLoopStatus = "Run loop is idle.";
     private string _licenseStatusMessage = "License status has not been evaluated.";
     private string _licenseTier = "None";
     private string _licenseExpiration = "—";
@@ -38,9 +44,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private string _licenseTokenText = string.Empty;
     private string _trialEmail = string.Empty;
 
-    public MainWindowViewModel(IHostTelemetryProvider? hostTelemetryProvider = null)
+    public MainWindowViewModel(
+        IHostTelemetryProvider? hostTelemetryProvider = null,
+        IFirstPlayableLoopController? firstLoopController = null,
+        IObservableSettings? settings = null,
+        IRunLoopController? runLoopController = null)
     {
         _hostTelemetryProvider = hostTelemetryProvider;
+        _runLoopController = runLoopController ?? EZBuddyRuntime.RunLoop;
+        FirstLoop = new FirstPlayableLoopViewModel(firstLoopController, settings);
 
         NavigationModules = new ObservableCollection<NavigationModule>(CreateNavigation());
         PipelineSteps = new ObservableCollection<PipelineStep>();
@@ -49,8 +61,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         SelectModuleCommand = new RelayCommand(SelectModule);
         ToggleModuleCommand = new RelayCommand(ToggleModule);
-        GentleStopCommand = new RelayCommand(() => EZBuddyRuntime.Queue.RequestGentleStop());
-        ResumeCommand = new RelayCommand(() => EZBuddyRuntime.Queue.Resume());
+        PauseCommand = new AsyncRelayCommand(() => _runLoopController.PauseAsync());
+        GentleStopCommand = new AsyncRelayCommand(() => _runLoopController.StopAsync());
+        ResumeCommand = new AsyncRelayCommand(() => _runLoopController.ResumeAsync());
         EmergencyStopCommand = new AsyncRelayCommand(() => EZBuddyRuntime.Queue.EmergencyStopAsync());
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
         InstallLicenseCommand = new AsyncRelayCommand(InstallLicenseAsync);
@@ -60,7 +73,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         LicenseRuntime.StatusChanged += OnLicenseStatusChanged;
         LicenseRuntime.LicenseRequired += OnLicenseRequired;
+        _runLoopController.StatusChanged += OnRunLoopStatusChanged;
         ApplyLicenseStatus(LicenseRuntime.CurrentStatus);
+        ApplyRunLoopStatus(_runLoopController.Status);
 
         _refreshTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -69,6 +84,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _refreshTimer.Tick += OnRefreshTick;
     }
 
+    public FirstPlayableLoopViewModel FirstLoop { get; }
     public ObservableCollection<NavigationModule> NavigationModules { get; }
     public ObservableCollection<PipelineStep> PipelineSteps { get; }
     public ObservableCollection<EZBuddy.UI.Models.ActivityQueueItem> ActivityQueue { get; }
@@ -76,6 +92,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public ICommand SelectModuleCommand { get; }
     public ICommand ToggleModuleCommand { get; }
+    public ICommand PauseCommand { get; }
     public ICommand GentleStopCommand { get; }
     public ICommand ResumeCommand { get; }
     public ICommand EmergencyStopCommand { get; }
@@ -165,6 +182,24 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _isLicenseWorkspace, value);
     }
 
+    public bool IsFirstLoopWorkspace
+    {
+        get => _isFirstLoopWorkspace;
+        private set => SetProperty(ref _isFirstLoopWorkspace, value);
+    }
+
+    public string RunLoopState
+    {
+        get => _runLoopState;
+        private set => SetProperty(ref _runLoopState, value);
+    }
+
+    public string RunLoopStatus
+    {
+        get => _runLoopStatus;
+        private set => SetProperty(ref _runLoopStatus, value);
+    }
+
     public string LicenseStatusMessage
     {
         get => _licenseStatusMessage;
@@ -210,6 +245,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         SelectedWorkspace = "License & Trial Activation";
         IsLicenseWorkspace = true;
+        IsFirstLoopWorkspace = false;
         ApplyLicenseStatus(LicenseRuntime.CurrentStatus);
     }
 
@@ -220,6 +256,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             _refreshTimer.Start();
         }
 
+        _ = FirstLoop.LoadAsync();
         _ = RefreshAsync();
     }
 
@@ -239,6 +276,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             RefreshQueue();
             await RefreshIntegrationsAsync().ConfigureAwait(true);
             ApplyLicenseStatus(LicenseRuntime.CurrentStatus);
+            ApplyRunLoopStatus(_runLoopController.Status);
         }
         finally
         {
@@ -252,6 +290,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _refreshTimer.Tick -= OnRefreshTick;
         LicenseRuntime.StatusChanged -= OnLicenseStatusChanged;
         LicenseRuntime.LicenseRequired -= OnLicenseRequired;
+        _runLoopController.StatusChanged -= OnRunLoopStatusChanged;
+        FirstLoop.DisposeAsync().AsTask().GetAwaiter().GetResult();
         GC.SuppressFinalize(this);
     }
 
@@ -424,6 +464,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ApplyLicenseStatus(status);
         });
 
+    private void OnRunLoopStatusChanged(object? sender, RunLoopStatus status)
+        => DispatchToUi(() => ApplyRunLoopStatus(status));
+
+    private void ApplyRunLoopStatus(RunLoopStatus status)
+    {
+        RunLoopState = status.State.ToString();
+        RunLoopStatus = status.Message;
+    }
+
     private void ApplyLicenseStatus(LicenseStatus? status)
     {
         if (status is null)
@@ -467,9 +516,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         SelectedWorkspace = selected.Name;
         IsLicenseWorkspace = string.Equals(selected.Key, "License", StringComparison.OrdinalIgnoreCase);
+        IsFirstLoopWorkspace = string.Equals(selected.Key, "FirstLoop", StringComparison.OrdinalIgnoreCase);
+
         if (IsLicenseWorkspace)
         {
             ApplyLicenseStatus(LicenseRuntime.CurrentStatus);
+        }
+
+        if (IsFirstLoopWorkspace)
+        {
+            _ = FirstLoop.LoadAsync();
         }
     }
 
@@ -484,6 +540,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private static IEnumerable<NavigationModule> CreateNavigation()
     {
         yield return Nav("Core", "Dashboard", "▦", "Dashboard", false, true);
+        yield return Nav("Core", "First Playable Loop", "▶", "FirstLoop", false);
         yield return Nav("Core", "Activity Queue", "≡", "Queue", false);
         yield return Nav("Core", "License & Trial Activation", "◆", "License", false);
         yield return Nav("Core", "Progression Planner", "✓", "Progression", true);
