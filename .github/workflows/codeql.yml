@@ -17,7 +17,7 @@ permissions:
 jobs:
   analyze:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -34,11 +34,23 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Restore
+      - name: Restore plugin
         run: dotnet restore src/EZBuddy.Plugin/EZBuddy.Plugin.csproj
 
-      - name: Build
+      - name: Restore botbase
+        run: dotnet restore src/EZBuddy.BotBase/EZBuddy.BotBase.csproj
+
+      - name: Restore license issuer
+        run: dotnet restore tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj
+
+      - name: Build plugin
         run: dotnet build src/EZBuddy.Plugin/EZBuddy.Plugin.csproj -c Release --no-restore -p:Platform=x64
+
+      - name: Build botbase
+        run: dotnet build src/EZBuddy.BotBase/EZBuddy.BotBase.csproj -c Release --no-restore -p:Platform=x64
+
+      - name: Build license issuer
+        run: dotnet build tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj -c Release --no-restore
 
       - name: Analyze
         uses: github/codeql-action/analyze@v3
