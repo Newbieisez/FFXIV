@@ -28,6 +28,7 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <Button Content="Reload" Command="{Binding FirstLoop.ReloadCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
                         <Button Content="Save" Command="{Binding FirstLoop.SaveCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
+                        <Button Content="Start" Command="{Binding StartCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
                         <Button Content="Pause" Command="{Binding PauseCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
                         <Button Content="Resume" Command="{Binding ResumeCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
                         <Button Content="Gentle Stop" Command="{Binding GentleStopCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
@@ -124,6 +125,27 @@
                                     <TextBox Text="{Binding FirstLoop.InventoryTargetFreeSlots, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
                                 </StackPanel>
                             </Grid>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="1*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="RETAINER FREE-SLOT FLOOR" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBox Text="{Binding FirstLoop.MinimumRetainerFreeSlots, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="REPAIR BELOW %" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBox Text="{Binding FirstLoop.AutoRepairThresholdPercent, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <WrapPanel Margin="0,0,0,8">
+                                <CheckBox Content="Auto repair gear" IsChecked="{Binding FirstLoop.AutoRepairGear}" Margin="0,0,18,4"/>
+                                <CheckBox Content="Auto extract materia" IsChecked="{Binding FirstLoop.AutoExtractMateria}" Margin="0,0,18,4"/>
+                            </WrapPanel>
 
                             <TextBlock Text="FOOD ITEM ID" Style="{StaticResource CaptionStyle}"/>
                             <TextBox Text="{Binding FirstLoop.FoodItemId, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,6" Padding="8,6"/>
