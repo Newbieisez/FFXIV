@@ -17,7 +17,7 @@ public sealed class ConflictGuardTests
 
         var findings = await guard.ScanAsync(["Duty"], token);
 
-        var duty = Assert.Single(findings.Where(finding => finding.RuleId == "duty.overlap"));
+        var duty = Assert.Single(findings, finding => finding.RuleId == "duty.overlap");
         Assert.Equal(ConflictSeverity.Critical, duty.Severity);
         Assert.True(duty.ShouldPause);
     }
@@ -34,7 +34,7 @@ public sealed class ConflictGuardTests
 
         var findings = await guard.ScanAsync(["Retainers"], token);
 
-        var retainer = Assert.Single(findings.Where(finding => finding.RuleId == "retainer.overlap"));
+        var retainer = Assert.Single(findings, finding => finding.RuleId == "retainer.overlap");
         Assert.Equal(ConflictSeverity.Warning, retainer.Severity);
         Assert.False(retainer.ShouldPause);
     }
