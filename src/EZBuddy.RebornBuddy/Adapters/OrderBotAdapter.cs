@@ -1,4 +1,5 @@
 using EZBuddy.Core.Adapters;
+using EZBuddy.Core.Runtime;
 using ff14bot;
 using ff14bot.AClasses;
 using ff14bot.Managers;
@@ -85,10 +86,14 @@ public sealed class OrderBotAdapter : IOrderBotAdapter
 
             if (TreeRoot.IsRunning)
             {
-                TreeRoot.Stop("EZBuddy generated profile handoff");
-                await WaitUntilAsync(() => !TreeRoot.IsRunning, TimeSpan.FromSeconds(20), cancellationToken).ConfigureAwait(false);
+                using (HostLifecycleTransition.BeginInternalTransition())
+                {
+                    TreeRoot.Stop("EZBuddy generated profile handoff");
+                    await WaitUntilAsync(() => !TreeRoot.IsRunning, TimeSpan.FromSeconds(20), cancellationToken).ConfigureAwait(false);
+                }
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             BotManager.SetCurrent(orderBot);
             NeoProfileManager.Load(profilePath);
             NeoProfileManager.UpdateCurrentProfileBehavior();
@@ -99,7 +104,7 @@ public sealed class OrderBotAdapter : IOrderBotAdapter
         }
         catch (OperationCanceledException)
         {
-            // Cancellation is a normal host shutdown path.
+            // Cancellation is a normal external stop/shutdown path.
         }
         catch (Exception exception)
         {
