@@ -75,7 +75,7 @@ public sealed class MaintenanceActivity : IEZActivity
         if (_options.AutoExtractMateria && !_materiaExtractionAttempted)
         {
             _materiaExtractionAttempted = true;
-            _materiaExtractionSucceeded = await _lisbeth.ExtractMateriaAsync(cancellationToken).ConfigureAwait(false);
+            _materiaExtractionSucceeded = await _lisbeth.ExtractMateriaAsync(cancellationToken);
             if (_materiaExtractionSucceeded)
             {
                 return ExecutionResult.Continue(
@@ -96,7 +96,7 @@ public sealed class MaintenanceActivity : IEZActivity
             }
 
             _repairAttempted = true;
-            var repaired = await _lisbeth.SelfRepairAsync(_options.AllowMenderFallback, cancellationToken).ConfigureAwait(false);
+            var repaired = await _lisbeth.SelfRepairAsync(_options.AllowMenderFallback, cancellationToken);
             if (!repaired)
             {
                 return ExecutionResult.Block("Repair is required, but Lisbeth repair is unavailable or failed. Repair manually or restore Lisbeth integration.");
