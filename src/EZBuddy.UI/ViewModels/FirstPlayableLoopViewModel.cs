@@ -10,6 +10,7 @@ namespace EZBuddy.UI.ViewModels;
 public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly IFirstPlayableLoopController? _controller;
+    private readonly IDutyRouteRecorderController? _routeRecorderController;
     private readonly IObservableSettings _settings;
     private bool _applyingSettings;
 
@@ -38,23 +39,35 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
     private bool _runDutyLoop = true;
     private bool _returnToIdle = true;
     private string _statusMessage = "Load or configure the first playable loop, then run it.";
+    private string _routeRecorderName = "Recorded Duty";
+    private string _routeRecorderMinimumLevel = "1";
+    private string _routeRecorderMaximumLevel = "100";
+    private string _routeRecorderStatus = "Recorder idle.";
 
     public FirstPlayableLoopViewModel(
         IFirstPlayableLoopController? controller,
-        IObservableSettings? settings = null)
+        IObservableSettings? settings = null,
+        IDutyRouteRecorderController? routeRecorderController = null)
     {
         _controller = controller;
+        _routeRecorderController = routeRecorderController;
         _settings = settings ?? new JsonEZBuddySettingsManager(new JsonEZBuddySettingsStore());
         _settings.SettingsChanged += OnSettingsChanged;
 
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         RunCommand = new AsyncRelayCommand(RunAsync);
         ReloadCommand = new AsyncRelayCommand(LoadAsync);
+        StartRouteRecorderCommand = new RelayCommand(StartRouteRecorder);
+        CaptureRouteTargetCommand = new RelayCommand(CaptureRouteTarget);
+        StopRouteRecorderCommand = new RelayCommand(StopRouteRecorder);
     }
 
     public ICommand SaveCommand { get; }
     public ICommand RunCommand { get; }
     public ICommand ReloadCommand { get; }
+    public ICommand StartRouteRecorderCommand { get; }
+    public ICommand CaptureRouteTargetCommand { get; }
+    public ICommand StopRouteRecorderCommand { get; }
 
     public IReadOnlyList<string> DutyModes { get; } =
     [
@@ -96,6 +109,10 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
     public bool RunDutyLoop { get => _runDutyLoop; set => SetAndSchedule(ref _runDutyLoop, value); }
     public bool ReturnToIdle { get => _returnToIdle; set => SetAndSchedule(ref _returnToIdle, value); }
     public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
+    public string RouteRecorderName { get => _routeRecorderName; set => SetProperty(ref _routeRecorderName, value); }
+    public string RouteRecorderMinimumLevel { get => _routeRecorderMinimumLevel; set => SetProperty(ref _routeRecorderMinimumLevel, value); }
+    public string RouteRecorderMaximumLevel { get => _routeRecorderMaximumLevel; set => SetProperty(ref _routeRecorderMaximumLevel, value); }
+    public string RouteRecorderStatus { get => _routeRecorderStatus; private set => SetProperty(ref _routeRecorderStatus, value); }
 
     public async Task LoadAsync()
     {
@@ -191,6 +208,57 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
         {
             StatusMessage = $"First loop failed to start: {exception.Message}";
         }
+    }
+
+    private void StartRouteRecorder()
+    {
+        if (_routeRecorderController is null)
+        {
+            RouteRecorderStatus = "Route recorder is unavailable in this host.";
+            return;
+        }
+
+        if (!TryUInt(QueueDutyId, "Queue/registration duty ID", false, out var queueDutyId, out var error) ||
+            !TryUInt(DutyTerritoryId, "Duty territory/map ID", false, out var territoryId, out error) ||
+            !TryInt(RouteRecorderMinimumLevel, "Recorder minimum level", out var minimumLevel, out error) ||
+            !TryInt(RouteRecorderMaximumLevel, "Recorder maximum level", out var maximumLevel, out error))
+        {
+            RouteRecorderStatus = error;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(RouteRecorderName))
+        {
+            RouteRecorderStatus = "Recorder route name is required.";
+            return;
+        }
+
+        try
+        {
+            var result = _routeRecorderController.Start(new DutyRouteRecorderStartRequest(
+                queueDutyId,
+                territoryId,
+                RouteRecorderName.Trim(),
+                minimumLevel,
+                maximumLevel));
+            RouteRecorderStatus = result.Message;
+        }
+        catch (Exception exception)
+        {
+            RouteRecorderStatus = $"Recorder could not start: {exception.Message}";
+        }
+    }
+
+    private void CaptureRouteTarget()
+    {
+        RouteRecorderStatus = _routeRecorderController?.CaptureCurrentTarget().Message
+            ?? "Route recorder is unavailable in this host.";
+    }
+
+    private void StopRouteRecorder()
+    {
+        RouteRecorderStatus = _routeRecorderController?.StopAndSave().Message
+            ?? "Route recorder is unavailable in this host.";
     }
 
     private void SynchronizeSettingsFromEditor()
@@ -381,7 +449,7 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             return true;
         }
 
-        if (uint.TryParse(text?.Trim(), out value))
+        if (uint.TryParse(text?.Trim(), out value) && value > 0)
         {
             error = string.Empty;
             return true;
