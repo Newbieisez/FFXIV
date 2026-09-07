@@ -4,10 +4,12 @@ using EZBuddy.Core.Diagnostics;
 using EZBuddy.Core.Duties;
 using EZBuddy.Core.Engine;
 using EZBuddy.Core.Licensing;
+using EZBuddy.Core.Routines;
 using EZBuddy.Core.Runtime;
 using EZBuddy.Core.Settings;
 using EZBuddy.RebornBuddy.Activities;
 using EZBuddy.RebornBuddy.Diagnostics;
+using EZBuddy.RebornBuddy.Routines;
 
 namespace EZBuddy.RebornBuddy.Bundles;
 
@@ -63,6 +65,12 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
         {
             var configuration = BuildConfiguration(settings);
             var factory = new RebornBuddyFirstPlayableActivityFactory(configuration);
+
+            // Validate reset history and build opt-in weekly work before mutating the activity queue.
+            // A corrupt completion ledger therefore fails closed without leaving a partially queued loop.
+            var beforeProgressionActivities = await BuildBeforeProgressionActivitiesAsync(cancellationToken)
+                .ConfigureAwait(false);
+
             var planner = new FirstPlayableBundlePlanner(queue, factory);
             var plan = planner.Enqueue(new FirstPlayableBundleOptions(
                 RunMaintenance: settings.RunMaintenance,
@@ -72,7 +80,8 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
                 RunDutyLoop: settings.RunDutyLoop,
                 ReturnToIdle: settings.ReturnToIdle,
                 BasePriority: 10_000,
-                MaxRetriesPerStage: 2));
+                MaxRetriesPerStage: 2,
+                BeforeProgressionActivities: beforeProgressionActivities));
 
             if (plan.StageNames.Count == 0)
             {
@@ -93,6 +102,46 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
             return FirstPlayableLoopStartResult.Rejected(
                 $"First loop could not be queued: {exception.Message}");
         }
+    }
+
+    private static async Task<IReadOnlyList<IEZActivity>> BuildBeforeProgressionActivitiesAsync(
+        CancellationToken cancellationToken)
+    {
+        var selectedClients = RebornBuddyCustomDeliveryRoutineFactory.ReadClientKeys();
+        if (selectedClients.Count == 0)
+        {
+            return Array.Empty<IEZActivity>();
+        }
+
+        var routine = EZRoutineCatalog.Find("custom-deliveries")
+            ?? throw new InvalidOperationException("Custom Deliveries routine definition is missing.");
+
+        var characterKey = SettingsPathSanitizer.Sanitize(ff14bot.Core.Player?.Name ?? "default");
+        var completionPath = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory,
+            "Settings",
+            "EZBuddy",
+            "Routines",
+            characterKey + ".json");
+        var completionStore = new JsonRoutineCompletionStore(completionPath);
+        var resetPlanner = new ResetAwareRoutinePlanner(completionStore);
+        var nowUtc = DateTimeOffset.UtcNow;
+
+        var dueState = (await resetPlanner.GetDueAsync([routine], nowUtc, cancellationToken)
+            .ConfigureAwait(false)).Single();
+        if (!dueState.IsDue)
+        {
+            return Array.Empty<IEZActivity>();
+        }
+
+        var activityFactory = new RebornBuddyCustomDeliveryRoutineFactory();
+        var activity = await activityFactory.CreateAsync(routine, cancellationToken).ConfigureAwait(false);
+        if (activity is null)
+        {
+            return Array.Empty<IEZActivity>();
+        }
+
+        return [new RoutineCompletionActivity(routine.Key, activity, completionStore)];
     }
 
     private static FirstPlayableLoopConfiguration BuildConfiguration(FirstPlayableLoopSettings settings)
