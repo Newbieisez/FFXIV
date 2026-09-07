@@ -8,7 +8,8 @@ namespace EZBuddy.RebornBuddy.Safety;
 /// <summary>
 /// Passive inbound-contact source backed by RebornBuddy's public GamelogManager event. It does not
 /// send chat, reply, move, log out, or inspect raw memory. Ambiguous tell entries are ignored unless
-/// sender metadata proves the message did not originate from the local character.
+/// sender metadata proves the message did not originate from the local character. Private message
+/// contents are intentionally not forwarded into EZBuddy notifications.
 /// </summary>
 public sealed class RebornBuddyGamelogContactSource : ISocialContactSource, IDisposable
 {
@@ -76,14 +77,13 @@ public sealed class RebornBuddyGamelogContactSource : ISocialContactSource, IDis
             var fallbackSender = kind.Value == SocialContactKind.GmCommunication
                 ? "GM communication"
                 : "Incoming tell";
-            var content = entry.Contents?.ToString();
             var id = $"gamelog:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}:{sequence}:{typeName}";
             _signals.Enqueue(new SocialContactSignal(
                 id,
                 kind.Value,
                 string.IsNullOrWhiteSpace(senderName) ? fallbackSender : senderName,
                 DateTimeOffset.UtcNow,
-                string.IsNullOrWhiteSpace(content) ? null : content));
+                Message: null));
         }
         catch
         {
