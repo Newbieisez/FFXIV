@@ -1,9 +1,11 @@
 using System.IO;
 using EZBuddy.Core.Adapters;
+using EZBuddy.Core.Gear;
 using EZBuddy.Core.Goals;
 using EZBuddy.Core.Licensing;
 using EZBuddy.Core.Product;
 using EZBuddy.Core.Runtime;
+using EZBuddy.Core.Settings;
 using EZBuddy.RebornBuddy.Adapters;
 using EZBuddy.RebornBuddy.Settings;
 using EZBuddy.UI.ViewModels;
@@ -13,6 +15,8 @@ namespace EZBuddy.Plugin;
 
 public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenceProvider
 {
+    private const int DefaultSmartGearKeepItemLevel = 730;
+
     public async Task<ProductIntelligenceUpdate> EvaluateAsync(
         GoalType goalType,
         string subject,
@@ -98,7 +102,7 @@ public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenc
         {
             "maintenance", "inventory-maintenance", "duty-support-leveling", "retainers",
             "craft-gather", "dailies", "wondrous-tails", "custom-deliveries", "gold-saucer",
-            "smart-gear", "procurement", "collections", "desynthesis", "duties"
+            "smart-gear", "currency-guard", "procurement", "collections", "materia", "desynthesis", "duties"
         };
         var goal = GoalPlanner.Build(new GoalRequest(goalType, string.IsNullOrWhiteSpace(subject) ? "My character" : subject.Trim()), availableCapabilities);
 
@@ -111,10 +115,110 @@ public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenc
             .Concat(goal.Steps
                 .Where(step => !step.Available)
                 .Select(step => $"Goal: {step.Title} is not available yet."))
+            .Concat(await BuildProductSnapshotRecommendationsAsync(characterAvailable, cancellationToken).ConfigureAwait(true))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         return new ProductIntelligenceUpdate(preflight, dryRun, goal, recommendations);
+    }
+
+    private static async Task<IReadOnlyList<string>> BuildProductSnapshotRecommendationsAsync(
+        bool characterAvailable,
+        CancellationToken cancellationToken)
+    {
+        var characterName = ff14bot.Core.Player?.Name ?? "default";
+        var characterKey = SettingsPathSanitizer.Sanitize(characterName);
+        var path = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory,
+            "Settings",
+            "EZBuddy",
+            "Product",
+            characterKey + ".snapshot.json");
+        var store = new JsonProductSnapshotStore(path);
+        var snapshot = await store.LoadAsync(cancellationToken).ConfigureAwait(true);
+        if (snapshot is null)
+        {
+            return ["Product Snapshot: no saved snapshot is available yet; Smart Gear, currency-cap, collections, procurement, and materia analysis will activate after a snapshot is captured."];
+        }
+
+        var jobKey = characterAvailable
+            ? ff14bot.Core.Me.CurrentJob.ToString()
+            : "Adventurer";
+
+        ProductAnalysisResult analysis;
+        try
+        {
+            analysis = ProductSnapshotAnalyzer.Analyze(
+                snapshot,
+                new ProductAnalysisRequest(
+                    jobKey,
+                    DefaultSmartGearKeepItemLevel));
+        }
+        catch (Exception exception) when (exception is InvalidDataException or ArgumentException)
+        {
+            return [$"Product Snapshot: saved data could not be analyzed safely — {exception.Message}"];
+        }
+
+        var output = new List<string>();
+        var age = DateTimeOffset.UtcNow - snapshot.CapturedAtUtc;
+        output.Add($"Product Snapshot: {snapshot.Gear.Count} gear row(s), {snapshot.Currencies.Count} currency row(s), {snapshot.Collections.Count} collection row(s); captured {FormatAge(age)} ago for {snapshot.CharacterKey}.");
+
+        if (analysis.Gear is not null)
+        {
+            output.AddRange(analysis.Gear.Recommendations
+                .Where(recommendation => recommendation.Disposition == GearDisposition.EquipBest)
+                .OrderByDescending(recommendation => recommendation.Item.ItemLevel)
+                .Take(8)
+                .Select(recommendation => $"Smart Gear: {recommendation.Item.Name} (iLvl {recommendation.Item.ItemLevel}) is the best owned {recommendation.Item.Slot} candidate for {jobKey}."));
+
+            var belowFloorCandidates = analysis.Gear.Recommendations.Count(recommendation =>
+                recommendation.Item.ItemLevel < DefaultSmartGearKeepItemLevel &&
+                recommendation.Disposition is GearDisposition.ExpertDeliveryCandidate or GearDisposition.DesynthesisCandidate or GearDisposition.SellCandidate or GearDisposition.Retainer);
+            if (belowFloorCandidates > 0)
+            {
+                output.Add($"Smart Gear: {belowFloorCandidates} non-equipped item(s) are below the advisory iLvl {DefaultSmartGearKeepItemLevel} keep floor. They remain non-destructive candidates until an approved disposal rule exists.");
+            }
+        }
+
+        output.AddRange(analysis.Currency.Warnings.Select(warning => $"Currency Guard: {warning}"));
+        output.AddRange(analysis.Currency.SpendItems.Select(item =>
+            $"Currency Guard: approved plan would spend {item.TotalCost:N0} {item.CurrencyKey} on {item.Quantity} × {item.DisplayName}."));
+
+        output.AddRange(analysis.Collections
+            .Take(5)
+            .Select(target => $"Collection: {target.Item.Name} ({target.Item.CollectionType}) — {target.Recommendation}"));
+
+        if (analysis.Procurement is not null)
+        {
+            output.AddRange(analysis.Procurement.Blockers.Select(blocker => $"Procurement: {blocker}"));
+        }
+
+        output.AddRange(analysis.Materia
+            .Where(plan => !plan.MeetsTargets)
+            .Select(plan => $"Materia: {plan.Request.GearName} still has unmet meld targets after planning."));
+        output.AddRange(analysis.Warnings.Select(warning => $"Product Analysis: {warning}"));
+
+        return output;
+    }
+
+    private static string FormatAge(TimeSpan age)
+    {
+        if (age < TimeSpan.Zero)
+        {
+            return "0 minutes";
+        }
+
+        if (age.TotalDays >= 1)
+        {
+            return $"{Math.Floor(age.TotalDays):N0} day(s)";
+        }
+
+        if (age.TotalHours >= 1)
+        {
+            return $"{Math.Floor(age.TotalHours):N0} hour(s)";
+        }
+
+        return $"{Math.Max(0, Math.Floor(age.TotalMinutes)):N0} minute(s)";
     }
 
     private static IReadOnlyList<string> BuildDutyBlockers(
