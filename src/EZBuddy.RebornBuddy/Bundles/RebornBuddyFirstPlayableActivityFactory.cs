@@ -212,7 +212,8 @@ public sealed class RebornBuddyFirstPlayableActivityFactory : IFirstPlayableActi
             _orderBot,
             _magitek,
             new RebornBuddyDutyLevelingProgressProvider(),
-            _configuration.Duty);
+            _configuration.Duty,
+            new RebornBuddyDutyPostRunAdapter());
 
     private static TAdapter RequiredAdapter<TAdapter>()
         where TAdapter : class, IEZAdapter
