@@ -52,7 +52,7 @@ public sealed class WondrousTailsPlannerTests
 
         var plan = WondrousTailsPlanner.Build(snapshot, new WondrousTailsPlannerOptions(MaximumDutiesThisRun: 1));
 
-        var step = Assert.Single(plan.Steps.Where(step => step.Action == WondrousTailsPlanAction.RunObjective));
+        var step = Assert.Single(plan.Steps, step => step.Action == WondrousTailsPlanAction.RunObjective);
         Assert.Equal("obj-03", step.ObjectiveKey);
     }
 
@@ -70,7 +70,7 @@ public sealed class WondrousTailsPlannerTests
             snapshot,
             new WondrousTailsPlannerOptions(AllowSecondChanceRetry: true));
 
-        var retry = Assert.Single(plan.Steps.Where(step => step.Action == WondrousTailsPlanAction.UseRetry));
+        var retry = Assert.Single(plan.Steps, step => step.Action == WondrousTailsPlanAction.UseRetry);
         Assert.Equal("obj-01", retry.ObjectiveKey);
         Assert.Contains("rescan", retry.Message, StringComparison.OrdinalIgnoreCase);
     }
