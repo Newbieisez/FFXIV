@@ -5,6 +5,8 @@ on:
     branches: [ main ]
     paths:
       - .github/workflows/route-reference-inventory.yml
+      - src/EZBuddy.Core/Research/**
+      - tools/EZBuddy.RouteReferenceScanner/**
   workflow_dispatch:
 
 permissions:
@@ -35,12 +37,13 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $scanner = Join-Path $PWD 'tools/EZBuddy.RouteReferenceScanner/bin/Release/net10.0/EZBuddy.RouteReferenceScanner.dll'
           $workspace = Join-Path $env:RUNNER_TEMP 'ezbuddy-route-reference-sources'
-          $output = Join-Path $PWD 'artifacts/route-reference-manifests'
+          $output = Join-Path $PWD 'artifacts/reference-manifests'
           New-Item -ItemType Directory -Force -Path $workspace | Out-Null
           New-Item -ItemType Directory -Force -Path $output | Out-Null
 
           # Public research/reference ecosystems. The scanner emits metadata-only manifests;
-          # source bodies and navigation coordinates are never copied into EZBuddy artifacts.
+          # source bodies, copied mechanic implementations, and navigation coordinates are never
+          # copied into EZBuddy artifacts.
           $sources = @(
             @{ Name = 'DomesticWarlord-RebornProfiles'; Url = 'https://github.com/DomesticWarlord/RebornProfiles.git' },
             @{ Name = 'LlamaMagic-DutyMechanic'; Url = 'https://github.com/LlamaMagic/DutyMechanic.git' },
@@ -60,24 +63,34 @@ jobs:
               continue
             }
 
-            $manifest = Join-Path $output "$($source.Name).json"
-            dotnet $scanner scan --source $source.Name --out $manifest --root $destination
+            $routeManifest = Join-Path $output "$($source.Name).routes.json"
+            dotnet $scanner scan --source $source.Name --out $routeManifest --root $destination
             if ($LASTEXITCODE -ne 0) {
               throw "Route reference scanner failed for $($source.Name)."
             }
+
+            $mechanicManifest = Join-Path $output "$($source.Name).mechanics.json"
+            dotnet $scanner mechanics --source $source.Name --out $mechanicManifest --root $destination
+            if ($LASTEXITCODE -ne 0) {
+              throw "Plugin mechanic reference scanner failed for $($source.Name)."
+            }
           }
 
-          $manifests = Get-ChildItem $output -Filter '*.json' -File
-          if (-not $manifests) {
+          $routeManifests = Get-ChildItem $output -Filter '*.routes.json' -File
+          $mechanicManifests = Get-ChildItem $output -Filter '*.mechanics.json' -File
+          if (-not $routeManifests) {
             throw 'No public route-reference manifests were generated.'
           }
+          if (-not $mechanicManifests) {
+            throw 'No public plugin-mechanic reference manifests were generated.'
+          }
 
-          Write-Host "Generated $($manifests.Count) clean-room reference manifests."
+          Write-Host "Generated $($routeManifests.Count) route manifests and $($mechanicManifests.Count) mechanic manifests."
 
-      - name: Upload clean-room route reference manifests
+      - name: Upload clean-room reference manifests
         uses: actions/upload-artifact@v4
         with:
-          name: EZBuddy-public-route-reference-manifests
-          path: artifacts/route-reference-manifests/*.json
+          name: EZBuddy-public-reference-manifests
+          path: artifacts/reference-manifests/*.json
           if-no-files-found: error
           retention-days: 14
