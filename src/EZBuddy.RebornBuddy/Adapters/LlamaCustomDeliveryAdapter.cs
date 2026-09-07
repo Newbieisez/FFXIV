@@ -160,7 +160,10 @@ public sealed class LlamaCustomDeliveryAdapter : ICustomDeliveryAdapter
     {
         try
         {
-            return task.GetType().GetProperty("Result", BindingFlags.Public | BindingFlags.Instance)?.GetValue(task) as bool?;
+            var value = task.GetType()
+                .GetProperty("Result", BindingFlags.Public | BindingFlags.Instance)?
+                .GetValue(task);
+            return value is bool result ? result : null;
         }
         catch
         {
