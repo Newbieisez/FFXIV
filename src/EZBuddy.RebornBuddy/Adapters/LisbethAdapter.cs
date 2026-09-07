@@ -34,7 +34,7 @@ public sealed class LisbethAdapter : ILisbethAdapter
                 return new AdapterStatus(Key, DisplayName, AdapterHealth.Degraded, "Lisbeth product-key API returned an unexpected type.", DateTimeOffset.UtcNow, context.Version);
             }
 
-            var valid = await productKeyTask.WaitAsync(HealthTimeout, cancellationToken).ConfigureAwait(false);
+            var valid = await productKeyTask.WaitAsync(HealthTimeout, cancellationToken);
             return new AdapterStatus(
                 Key,
                 DisplayName,
@@ -72,7 +72,7 @@ public sealed class LisbethAdapter : ILisbethAdapter
         }
 
         var result = method.Invoke(context.Lisbeth, new object[] { ordersJson, false });
-        return result is Task<bool> task && await task.WaitAsync(OperationTimeout, cancellationToken).ConfigureAwait(false);
+        return result is Task<bool> task && await task.WaitAsync(OperationTimeout, cancellationToken);
     }
 
     public async Task<bool> ExitCraftingAsync(CancellationToken cancellationToken = default)
@@ -88,7 +88,7 @@ public sealed class LisbethAdapter : ILisbethAdapter
             return false;
         }
 
-        return await task.WaitAsync(TimeSpan.FromMinutes(2), cancellationToken).ConfigureAwait(false);
+        return await task.WaitAsync(TimeSpan.FromMinutes(2), cancellationToken);
     }
 
     public async Task<bool> SelfRepairAsync(bool allowMenderFallback, CancellationToken cancellationToken = default)
@@ -105,7 +105,7 @@ public sealed class LisbethAdapter : ILisbethAdapter
             return false;
         }
 
-        await task.WaitAsync(TimeSpan.FromMinutes(5), cancellationToken).ConfigureAwait(false);
+        await task.WaitAsync(TimeSpan.FromMinutes(5), cancellationToken);
         return true;
     }
 
@@ -122,7 +122,7 @@ public sealed class LisbethAdapter : ILisbethAdapter
             return false;
         }
 
-        await task.WaitAsync(TimeSpan.FromMinutes(5), cancellationToken).ConfigureAwait(false);
+        await task.WaitAsync(TimeSpan.FromMinutes(5), cancellationToken);
         return true;
     }
 
@@ -142,7 +142,7 @@ public sealed class LisbethAdapter : ILisbethAdapter
         Func<bool> continueCondition = static () => true;
         var position = new Vector3(x, y, z);
         var result = method.Invoke(context.Api, new object[] { zoneId, position, continueCondition, land });
-        return result is Task<bool> task && await task.WaitAsync(OperationTimeout, cancellationToken).ConfigureAwait(false);
+        return result is Task<bool> task && await task.WaitAsync(OperationTimeout, cancellationToken);
     }
 
     private static bool TryResolve(out LisbethContext context, out string failure)
