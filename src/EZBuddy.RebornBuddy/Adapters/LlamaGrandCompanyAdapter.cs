@@ -97,7 +97,7 @@ public sealed class LlamaGrandCompanyAdapter : IGrandCompanyAdapter
             return false;
         }
 
-        await task.WaitAsync(OperationTimeout, cancellationToken).ConfigureAwait(false);
+        await task.WaitAsync(OperationTimeout, cancellationToken);
         var purchased = ReadTaskResult<int>(task);
         return purchased > 0 && currentQuantity + purchased >= targetQuantity;
     }
@@ -127,7 +127,7 @@ public sealed class LlamaGrandCompanyAdapter : IGrandCompanyAdapter
             return false;
         }
 
-        await task.WaitAsync(OperationTimeout, cancellationToken).ConfigureAwait(false);
+        await task.WaitAsync(OperationTimeout, cancellationToken);
         var status = ReadTaskResultObject(task)?.ToString();
         return string.Equals(status, "Success", StringComparison.OrdinalIgnoreCase);
     }
