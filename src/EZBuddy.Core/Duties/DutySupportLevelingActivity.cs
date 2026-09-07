@@ -19,8 +19,12 @@ public sealed record DutySupportLevelingOptions(
     int? TrustId = null,
     int? TargetLevel = null,
     int? MaxRuns = 1,
-    int MinimumFreeInventorySlots = 5)
+    int MinimumFreeInventorySlots = 5,
+    DutyLootPolicy? LootPolicy = null,
+    int PostRunConfirmationTimeoutSeconds = 20)
 {
+    public DutyLootPolicy EffectiveLootPolicy => LootPolicy ?? new DutyLootPolicy();
+
     public void Validate()
     {
         if (DutyId == 0)
@@ -54,6 +58,13 @@ public sealed record DutySupportLevelingOptions(
         {
             throw new ArgumentOutOfRangeException(nameof(MinimumFreeInventorySlots));
         }
+
+        if (PostRunConfirmationTimeoutSeconds is < 5 or > 120)
+        {
+            throw new ArgumentOutOfRangeException(nameof(PostRunConfirmationTimeoutSeconds));
+        }
+
+        EffectiveLootPolicy.Validate();
     }
 }
 
@@ -64,6 +75,7 @@ public sealed class DutySupportLevelingActivity : IEZActivity
         QueueDuty,
         AwaitEntry,
         ProfileRunning,
+        PostRun,
         AwaitDutyExit
     }
 
@@ -71,8 +83,10 @@ public sealed class DutySupportLevelingActivity : IEZActivity
     private readonly IOrderBotAdapter _orderBot;
     private readonly IMagitekAdapter _magitek;
     private readonly IDutyLevelingProgressProvider _progress;
+    private readonly IDutyPostRunAdapter? _postRun;
     private readonly DutySupportLevelingOptions _options;
     private Phase _phase = Phase.QueueDuty;
+    private DateTimeOffset? _postRunStartedAt;
     private int _completedRuns;
     private bool _complete;
 
@@ -81,13 +95,15 @@ public sealed class DutySupportLevelingActivity : IEZActivity
         IOrderBotAdapter orderBot,
         IMagitekAdapter magitek,
         IDutyLevelingProgressProvider progress,
-        DutySupportLevelingOptions options)
+        DutySupportLevelingOptions options,
+        IDutyPostRunAdapter? postRun = null)
     {
         _dutySupport = dutySupport ?? throw new ArgumentNullException(nameof(dutySupport));
         _orderBot = orderBot ?? throw new ArgumentNullException(nameof(orderBot));
         _magitek = magitek ?? throw new ArgumentNullException(nameof(magitek));
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _postRun = postRun;
         _options.Validate();
     }
 
@@ -105,12 +121,12 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             return true;
         }
 
-        if (!await _magitek.IsCurrentRoutineAsync(cancellationToken).ConfigureAwait(false))
+        if (!await _magitek.IsCurrentRoutineAsync(cancellationToken))
         {
             return false;
         }
 
-        var orderStatus = await _orderBot.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+        var orderStatus = await _orderBot.GetStatusAsync(cancellationToken);
         return orderStatus.Health is AdapterHealth.Ready or AdapterHealth.Busy;
     }
 
@@ -136,102 +152,193 @@ public sealed class DutySupportLevelingActivity : IEZActivity
                 $"Duty loop blocked: {progress.FreeInventorySlots} free inventory slots; {_options.MinimumFreeInventorySlots} required.");
         }
 
-        if (!await _magitek.IsCurrentRoutineAsync(cancellationToken).ConfigureAwait(false))
+        if (!await _magitek.IsCurrentRoutineAsync(cancellationToken))
         {
             return ExecutionResult.Block("Duty Support leveling requires Magitek to be the active combat routine.");
         }
 
-        if (_phase == Phase.QueueDuty)
+        switch (_phase)
         {
-            var request = new DutyAutomationRequest(_options.DutyId, _options.Mode, _options.TrustId);
-            var queued = await _dutySupport.EnterAsync(request, cancellationToken).ConfigureAwait(false);
-            if (!queued)
-            {
-                return ExecutionResult.Retry(
-                    "Duty Support / Trust registration did not complete successfully.",
-                    TimeSpan.FromSeconds(3));
-            }
+            case Phase.QueueDuty:
+                return await QueueDutyAsync(cancellationToken);
 
-            _phase = Phase.AwaitEntry;
-            return ExecutionResult.Continue("Duty registration submitted; waiting for queue/zone-in on subsequent ticks.");
+            case Phase.AwaitEntry:
+                return await AwaitEntryAsync(cancellationToken);
+
+            case Phase.ProfileRunning:
+                return await MonitorProfileAsync(cancellationToken);
+
+            case Phase.PostRun:
+                return await ProcessPostRunAsync(progress, cancellationToken);
+
+            case Phase.AwaitDutyExit:
+                return await AwaitDutyExitAsync(cancellationToken);
+
+            default:
+                return ExecutionResult.Fail("Duty Support leveling reached an unknown phase.");
         }
-
-        if (_phase == Phase.AwaitEntry)
-        {
-            var dutyStatus = await _dutySupport.GetDutyStatusAsync(cancellationToken).ConfigureAwait(false);
-            if (dutyStatus.IsInDungeon)
-            {
-                var profileStarted = await _orderBot.LoadProfileAsync(_options.ProfilePath, cancellationToken).ConfigureAwait(false);
-                if (!profileStarted)
-                {
-                    return ExecutionResult.Retry(
-                        "Duty entered, but OrderBot could not start the configured duty profile.",
-                        TimeSpan.FromSeconds(3));
-                }
-
-                _phase = Phase.ProfileRunning;
-                return ExecutionResult.Yield("Duty entered and verified OrderBot profile handoff started.");
-            }
-
-            if (string.Equals(dutyStatus.State, "None", StringComparison.OrdinalIgnoreCase))
-            {
-                _phase = Phase.QueueDuty;
-                return ExecutionResult.Retry(
-                    "Duty queue returned to None before zone-in; registration will be retried.",
-                    TimeSpan.FromSeconds(3));
-            }
-
-            var advanced = await _dutySupport.AdvanceEntryAsync(cancellationToken).ConfigureAwait(false);
-            if (!advanced)
-            {
-                return ExecutionResult.Retry(
-                    $"Duty entry bridge could not safely advance state '{dutyStatus.State}'.",
-                    TimeSpan.FromSeconds(2));
-            }
-
-            return ExecutionResult.Yield($"Waiting for duty entry. Current state: {dutyStatus.State}.");
-        }
-
-        if (_phase == Phase.ProfileRunning)
-        {
-            if (await _orderBot.IsProfileRunningAsync(cancellationToken).ConfigureAwait(false))
-            {
-                return ExecutionResult.Yield($"Duty profile is running. Completed runs: {_completedRuns}.");
-            }
-
-            _phase = Phase.AwaitDutyExit;
-        }
-
-        if (_phase == Phase.AwaitDutyExit)
-        {
-            var status = await _dutySupport.GetDutyStatusAsync(cancellationToken).ConfigureAwait(false);
-            if (status.IsInDungeon)
-            {
-                return ExecutionResult.Retry(
-                    "The OrderBot duty profile stopped while the character is still inside the duty. Waiting for a clean exit or recovery instead of starting another run.",
-                    TimeSpan.FromSeconds(3));
-            }
-
-            _completedRuns++;
-            _phase = Phase.QueueDuty;
-
-            progress = _progress.Read();
-            if (GoalReached(progress, out goalReason))
-            {
-                _complete = true;
-                return ExecutionResult.Complete(BuildCompletionMessage(goalReason));
-            }
-
-            return ExecutionResult.Continue($"Duty run {_completedRuns} completed; preparing the next configured run.");
-        }
-
-        return ExecutionResult.Fail("Duty Support leveling reached an unknown phase.");
     }
 
     public Task OnHaltAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.CompletedTask;
+    }
+
+    private async Task<ExecutionResult> QueueDutyAsync(CancellationToken cancellationToken)
+    {
+        var request = new DutyAutomationRequest(_options.DutyId, _options.Mode, _options.TrustId);
+        var queued = await _dutySupport.EnterAsync(request, cancellationToken);
+        if (!queued)
+        {
+            return ExecutionResult.Retry(
+                "Duty Support / Trust registration did not complete successfully.",
+                TimeSpan.FromSeconds(3));
+        }
+
+        _phase = Phase.AwaitEntry;
+        return ExecutionResult.Continue("Duty registration submitted; waiting for queue/zone-in on subsequent ticks.");
+    }
+
+    private async Task<ExecutionResult> AwaitEntryAsync(CancellationToken cancellationToken)
+    {
+        var dutyStatus = await _dutySupport.GetDutyStatusAsync(cancellationToken);
+        if (dutyStatus.IsInDungeon)
+        {
+            var profileStarted = await _orderBot.LoadProfileAsync(_options.ProfilePath, cancellationToken);
+            if (!profileStarted)
+            {
+                return ExecutionResult.Retry(
+                    "Duty entered, but OrderBot could not start the configured duty profile.",
+                    TimeSpan.FromSeconds(3));
+            }
+
+            _phase = Phase.ProfileRunning;
+            return ExecutionResult.Yield("Duty entered and verified OrderBot profile handoff started.");
+        }
+
+        if (string.Equals(dutyStatus.State, "None", StringComparison.OrdinalIgnoreCase))
+        {
+            _phase = Phase.QueueDuty;
+            return ExecutionResult.Retry(
+                "Duty queue returned to None before zone-in; registration will be retried.",
+                TimeSpan.FromSeconds(3));
+        }
+
+        var advanced = await _dutySupport.AdvanceEntryAsync(cancellationToken);
+        if (!advanced)
+        {
+            return ExecutionResult.Retry(
+                $"Duty entry bridge could not safely advance state '{dutyStatus.State}'.",
+                TimeSpan.FromSeconds(2));
+        }
+
+        return ExecutionResult.Yield($"Waiting for duty entry. Current state: {dutyStatus.State}.");
+    }
+
+    private async Task<ExecutionResult> MonitorProfileAsync(CancellationToken cancellationToken)
+    {
+        if (await _orderBot.IsProfileRunningAsync(cancellationToken))
+        {
+            return ExecutionResult.Yield($"Duty profile is running. Completed runs: {_completedRuns}.");
+        }
+
+        var dutyStatus = await _dutySupport.GetDutyStatusAsync(cancellationToken);
+        if (!dutyStatus.IsInDungeon)
+        {
+            return FinishRun();
+        }
+
+        if (_postRun is null)
+        {
+            return ExecutionResult.Block(
+                "The duty profile stopped while still inside the instance, and no post-run completion/loot/exit adapter is configured. EZBuddy will not guess that the duty is complete.");
+        }
+
+        _postRunStartedAt = DateTimeOffset.UtcNow;
+        _phase = Phase.PostRun;
+        return ExecutionResult.Yield("Duty profile ended inside the instance; verifying director completion before loot or exit actions.");
+    }
+
+    private async Task<ExecutionResult> ProcessPostRunAsync(
+        DutyLevelingProgress progress,
+        CancellationToken cancellationToken)
+    {
+        if (_postRun is null)
+        {
+            return ExecutionResult.Block("Post-run adapter became unavailable.");
+        }
+
+        var postStatus = await _postRun.GetStatusAsync(cancellationToken);
+        if (!postStatus.IsDutyComplete)
+        {
+            var startedAt = _postRunStartedAt ?? DateTimeOffset.UtcNow;
+            if (DateTimeOffset.UtcNow - startedAt > TimeSpan.FromSeconds(_options.PostRunConfirmationTimeoutSeconds))
+            {
+                return ExecutionResult.Block(
+                    $"Duty profile stopped, but instance completion was not confirmed within {_options.PostRunConfirmationTimeoutSeconds} seconds. No loot or leave action was taken. Last status: {postStatus.Message}");
+            }
+
+            return ExecutionResult.Yield($"Waiting for confirmed duty completion. {postStatus.Message}");
+        }
+
+        if (postStatus.IsLootWindowOpen)
+        {
+            var processed = await _postRun.ProcessLootAsync(
+                _options.EffectiveLootPolicy,
+                progress.FreeInventorySlots,
+                cancellationToken);
+
+            if (!processed)
+            {
+                return ExecutionResult.Retry(
+                    "Duty completion is confirmed, but the loot window could not be processed safely.",
+                    TimeSpan.FromSeconds(2));
+            }
+
+            return ExecutionResult.Yield("Post-duty loot policy applied; rechecking completion UI before leaving.");
+        }
+
+        if (!postStatus.IsLeaveRequested)
+        {
+            var leaveRequested = await _postRun.RequestLeaveAsync(cancellationToken);
+            if (!leaveRequested)
+            {
+                return ExecutionResult.Retry(
+                    "Duty completion is confirmed, but the instance leave request failed.",
+                    TimeSpan.FromSeconds(2));
+            }
+        }
+
+        _phase = Phase.AwaitDutyExit;
+        return ExecutionResult.Yield("Instance leave requested; waiting for the next host tick to confirm zone exit.");
+    }
+
+    private async Task<ExecutionResult> AwaitDutyExitAsync(CancellationToken cancellationToken)
+    {
+        var status = await _dutySupport.GetDutyStatusAsync(cancellationToken);
+        if (status.IsInDungeon)
+        {
+            return ExecutionResult.Yield("Waiting for confirmed duty exit.");
+        }
+
+        return FinishRun();
+    }
+
+    private ExecutionResult FinishRun()
+    {
+        _completedRuns++;
+        _phase = Phase.QueueDuty;
+        _postRunStartedAt = null;
+
+        var progress = _progress.Read();
+        if (GoalReached(progress, out var goalReason))
+        {
+            _complete = true;
+            return ExecutionResult.Complete(BuildCompletionMessage(goalReason));
+        }
+
+        return ExecutionResult.Continue($"Duty run {_completedRuns} completed; preparing the next configured run.");
     }
 
     private bool GoalReached(DutyLevelingProgress progress, out string reason)
