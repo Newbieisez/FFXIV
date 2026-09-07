@@ -4,19 +4,13 @@ namespace EZBuddy.RebornBuddy.Settings;
 
 public sealed class RebornBuddySettingsStoragePathProvider : ISettingsStoragePathProvider
 {
-    private readonly string _rootDirectory;
+    private readonly EZBuddyStoragePaths _paths;
 
     public RebornBuddySettingsStoragePathProvider(string? rebornBuddyBaseDirectory = null)
     {
-        var baseDirectory = string.IsNullOrWhiteSpace(rebornBuddyBaseDirectory)
-            ? AppDomain.CurrentDomain.BaseDirectory
-            : Path.GetFullPath(rebornBuddyBaseDirectory);
-
-        _rootDirectory = Path.Combine(baseDirectory, "Settings", "EZBuddy");
+        _paths = new EZBuddyStoragePaths(rebornBuddyBaseDirectory);
     }
 
     public string GetSettingsFilePath(string profileOrCharacterId)
-        => Path.Combine(
-            _rootDirectory,
-            SettingsPathSanitizer.Sanitize(profileOrCharacterId) + ".json");
+        => _paths.GetCharacterSettingsPath(profileOrCharacterId);
 }
