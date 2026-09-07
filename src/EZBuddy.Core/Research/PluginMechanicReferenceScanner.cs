@@ -64,8 +64,8 @@ public sealed partial class PluginMechanicReferenceScanner
     [
         ("Avoidance", ["avoidancemanager", "addavoid", "avoidobjectinfo", "avoidlocation", "sidestep"]),
         ("GazeFacing", ["gaze", "lookaway", "look away", "turnaway", "turn away", "facing"]),
-        ("Stack", ["stackmarker", "stack marker", "party stack", "stack mechanic"]),
-        ("Spread", ["spreadmarker", "spread marker", "spread mechanic"]),
+        ("Stack", ["stackmarker", "stack marker", "party stack", "stack mechanic", " stack "]),
+        ("Spread", ["spreadmarker", "spread marker", "spread mechanic", " spread "]),
         ("Knockback", ["knockback", "knock back"]),
         ("LineOfSight", ["lineofsight", "line of sight", "loscheck", "los check"]),
         ("Tether", ["tether"]),
@@ -236,7 +236,7 @@ public sealed partial class PluginMechanicReferenceScanner
         return uint.TryParse(value, out var parsed) ? parsed : null;
     }
 
-    [GeneratedRegex(@"(?<![A-Za-z0-9_])(?<name>[A-Za-z_][A-Za-z0-9_]{1,80})\s*(?:=|:)\s*(?<value>(?:0x[0-9A-Fa-f]+)|(?:\d+))(?:[uUlL]*)\b", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(?<![A-Za-z0-9_])[\"']?(?<name>[A-Za-z_][A-Za-z0-9_]{1,80})[\"']?\s*(?:=|:)\s*[\"']?(?<value>(?:0x[0-9A-Fa-f]+)|(?:\d+))(?:[uUlL]*)[\"']?", RegexOptions.CultureInvariant)]
     private static partial Regex NamedNumericRegex();
 
     [GeneratedRegex(@"\b(?:const|static|readonly|private|public|internal|protected|uint|int|long|short|ushort|ulong|var|byte)\s+(?:(?:const|static|readonly|private|public|internal|protected|uint|int|long|short|ushort|ulong|var|byte)\s+)*(?<name>[A-Za-z_][A-Za-z0-9_]{1,80})\s*=\s*(?<value>(?:0x[0-9A-Fa-f]+)|(?:\d+))(?:[uUlL]*)\b", RegexOptions.CultureInvariant)]
