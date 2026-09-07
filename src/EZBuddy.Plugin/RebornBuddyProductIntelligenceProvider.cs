@@ -128,14 +128,8 @@ public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenc
         CancellationToken cancellationToken)
     {
         var characterName = ff14bot.Core.Player?.Name ?? "default";
-        var characterKey = SettingsPathSanitizer.Sanitize(characterName);
-        var path = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory,
-            "Settings",
-            "EZBuddy",
-            "Product",
-            characterKey + ".snapshot.json");
-        var store = new JsonProductSnapshotStore(path);
+        var paths = new EZBuddyStoragePaths();
+        var store = new JsonProductSnapshotStore(paths.GetProductSnapshotPath(characterName));
 
         string? captureWarning = null;
         var previousSnapshot = await store.LoadAsync(cancellationToken).ConfigureAwait(true);
