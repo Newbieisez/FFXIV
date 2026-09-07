@@ -13,7 +13,7 @@ permissions:
 jobs:
   inventory:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout EZBuddy
@@ -39,9 +39,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path $workspace | Out-Null
           New-Item -ItemType Directory -Force -Path $output | Out-Null
 
+          # Public research/reference ecosystems. The scanner emits metadata-only manifests;
+          # source bodies and navigation coordinates are never copied into EZBuddy artifacts.
           $sources = @(
             @{ Name = 'DomesticWarlord-RebornProfiles'; Url = 'https://github.com/DomesticWarlord/RebornProfiles.git' },
             @{ Name = 'LlamaMagic-DutyMechanic'; Url = 'https://github.com/LlamaMagic/DutyMechanic.git' },
+            @{ Name = 'zzi-zzi-zzi-SideStep'; Url = 'https://github.com/zzi-zzi-zzi/SideStep.git' },
+            @{ Name = 'athlon18-RBtrust'; Url = 'https://github.com/athlon18/RBtrust.git' },
+            @{ Name = 'zzi-zzi-zzi-DeepDive'; Url = 'https://github.com/zzi-zzi-zzi/DeepDive.git' },
             @{ Name = 'nt153133-LlamaUtilities'; Url = 'https://github.com/nt153133/LlamaUtilities.git' },
             @{ Name = 'Ruach82-RB_Sodimm_Profiles'; Url = 'https://github.com/Ruach82/RB_Sodimm_Profiles.git' }
           )
