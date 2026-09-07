@@ -12,6 +12,7 @@ public partial class MainWindow : Window
 {
     private LicenseActivationView? _licenseView;
     private FirstPlayableLoopView? _firstLoopView;
+    private ProductIntelligenceWindow? _productIntelligenceWindow;
 
     public MainWindow(
         IHostTelemetryProvider? telemetryProvider = null,
@@ -27,6 +28,7 @@ public partial class MainWindow : Window
             runLoopController);
         DataContext = ViewModel;
         AttachOverlayWorkspaces();
+        AttachProductIntelligenceButton();
         Loaded += OnLoaded;
         Closed += OnClosed;
     }
@@ -60,6 +62,59 @@ public partial class MainWindow : Window
         bodyGrid.Children.Add(_licenseView);
     }
 
+    private void AttachProductIntelligenceButton()
+    {
+        if (Content is not Border rootBorder || rootBorder.Child is not Grid rootGrid)
+        {
+            return;
+        }
+
+        var headerBorder = rootGrid.Children
+            .OfType<Border>()
+            .FirstOrDefault(border => Grid.GetRow(border) == 0);
+
+        if (headerBorder?.Child is not Grid headerGrid)
+        {
+            return;
+        }
+
+        var actionPanel = headerGrid.Children
+            .OfType<StackPanel>()
+            .FirstOrDefault(panel => Grid.GetColumn(panel) == 2);
+
+        if (actionPanel is null)
+        {
+            return;
+        }
+
+        var intelligenceButton = new Button
+        {
+            Content = "◆ Intelligence",
+            ToolTip = "Open Preflight, Dry Run, Smart Gear, recovery guidance, and goal planning.",
+            Margin = new Thickness(0, 0, 7, 0)
+        };
+        intelligenceButton.SetResourceReference(StyleProperty, "PrimaryButtonStyle");
+        System.Windows.Shell.WindowChrome.SetIsHitTestVisibleInChrome(intelligenceButton, true);
+        intelligenceButton.Click += OpenProductIntelligence;
+        actionPanel.Children.Insert(0, intelligenceButton);
+    }
+
+    private void OpenProductIntelligence(object sender, RoutedEventArgs e)
+    {
+        if (_productIntelligenceWindow is { IsVisible: true })
+        {
+            _productIntelligenceWindow.Activate();
+            return;
+        }
+
+        _productIntelligenceWindow = new ProductIntelligenceWindow
+        {
+            Owner = this
+        };
+        _productIntelligenceWindow.Closed += (_, _) => _productIntelligenceWindow = null;
+        _productIntelligenceWindow.Show();
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
         => ViewModel.StartAutoRefresh();
 
@@ -67,6 +122,8 @@ public partial class MainWindow : Window
     {
         Loaded -= OnLoaded;
         Closed -= OnClosed;
+        _productIntelligenceWindow?.Close();
+        _productIntelligenceWindow = null;
         ViewModel.Dispose();
         _licenseView = null;
         _firstLoopView = null;
