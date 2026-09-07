@@ -10,6 +10,6 @@ public sealed class RebornBuddyDutyLevelingProgressProvider : IDutyLevelingProgr
         var player = ff14bot.Core.Player;
         return new DutyLevelingProgress(
             CurrentLevel: player?.ClassLevel ?? 0,
-            FreeInventorySlots: InventoryManager.FreeSlots);
+            FreeInventorySlots: checked((int)InventoryManager.FreeSlots));
     }
 }
