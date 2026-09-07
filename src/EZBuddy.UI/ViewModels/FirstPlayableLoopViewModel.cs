@@ -50,7 +50,7 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
         IDutyRouteRecorderController? routeRecorderController = null)
     {
         _controller = controller;
-        _routeRecorderController = routeRecorderController;
+        _routeRecorderController = routeRecorderController ?? DutyRouteRecorderRuntime.Controller;
         _settings = settings ?? new JsonEZBuddySettingsManager(new JsonEZBuddySettingsStore());
         _settings.SettingsChanged += OnSettingsChanged;
 
@@ -138,7 +138,6 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
         }
         catch
         {
-            // Window close/shutdown should not throw because a settings flush failed.
         }
     }
 
@@ -200,7 +199,6 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
         {
             _settings.Update(current => current with { FirstPlayableLoop = loopSettings });
             await _settings.FlushAsync().ConfigureAwait(true);
-
             var result = await _controller.QueueAsync(loopSettings).ConfigureAwait(true);
             StatusMessage = result.Message;
         }
@@ -257,8 +255,20 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
 
     private void StopRouteRecorder()
     {
-        RouteRecorderStatus = _routeRecorderController?.StopAndSave().Message
-            ?? "Route recorder is unavailable in this host.";
+        var result = _routeRecorderController?.StopAndSave();
+        if (result is null)
+        {
+            RouteRecorderStatus = "Route recorder is unavailable in this host.";
+            return;
+        }
+
+        RouteRecorderStatus = result.Message;
+        if (result.Success && TryUInt(QueueDutyId, "Queue/registration duty ID", false, out var queueDutyId, out _))
+        {
+            var store = new JsonDutyNavigationProfileStore();
+            DutyProfilePath = Path.Combine(store.DirectoryPath, $"duty-{queueDutyId}.json");
+            RouteRecorderStatus += $" Native route selected: {DutyProfilePath}";
+        }
     }
 
     private void SynchronizeSettingsFromEditor()
@@ -271,12 +281,10 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
 
     private void ScheduleSettingsUpdate()
     {
-        if (_applyingSettings)
+        if (!_applyingSettings)
         {
-            return;
+            SynchronizeSettingsFromEditor();
         }
-
-        SynchronizeSettingsFromEditor();
     }
 
     private void OnSettingsChanged(object? sender, EZBuddySettings settings)
@@ -313,7 +321,7 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             ? DutyAutomationMode.Trust
             : DutyAutomationMode.DutySupport;
 
-        if (!Enum.TryParse<EZBuddy.Core.Duties.DutyLootAction>(DutyLootAction, ignoreCase: true, out var lootAction))
+        if (!Enum.TryParse<EZBuddy.Core.Duties.DutyLootAction>(DutyLootAction, true, out var lootAction))
         {
             error = "Duty loot action is invalid.";
             return false;
@@ -344,7 +352,6 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             DutyTerritoryId: territoryId,
             DutyLootAction: lootAction,
             DutyLootPassAtOrBelowFreeSlots: lootPassAt);
-
         return true;
     }
 
