@@ -1,3 +1,4 @@
+using System.IO;
 using EZBuddy.Core.Adapters;
 using EZBuddy.Core.Goals;
 using EZBuddy.Core.Licensing;
