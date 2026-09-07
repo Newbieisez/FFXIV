@@ -1,0 +1,78 @@
+name: Route Reference Inventory
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/route-reference-inventory.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout EZBuddy
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build clean-room reference scanner
+        run: |
+          dotnet restore tools/EZBuddy.RouteReferenceScanner/EZBuddy.RouteReferenceScanner.csproj
+          dotnet build tools/EZBuddy.RouteReferenceScanner/EZBuddy.RouteReferenceScanner.csproj -c Release --no-restore
+
+      - name: Inventory public reference ecosystems
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scanner = Join-Path $PWD 'tools/EZBuddy.RouteReferenceScanner/bin/Release/net10.0/EZBuddy.RouteReferenceScanner.dll'
+          $workspace = Join-Path $env:RUNNER_TEMP 'ezbuddy-route-reference-sources'
+          $output = Join-Path $PWD 'artifacts/route-reference-manifests'
+          New-Item -ItemType Directory -Force -Path $workspace | Out-Null
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+
+          $sources = @(
+            @{ Name = 'DomesticWarlord-RebornProfiles'; Url = 'https://github.com/DomesticWarlord/RebornProfiles.git' },
+            @{ Name = 'LlamaMagic-DutyMechanic'; Url = 'https://github.com/LlamaMagic/DutyMechanic.git' },
+            @{ Name = 'nt153133-LlamaUtilities'; Url = 'https://github.com/nt153133/LlamaUtilities.git' },
+            @{ Name = 'Ruach82-RB_Sodimm_Profiles'; Url = 'https://github.com/Ruach82/RB_Sodimm_Profiles.git' }
+          )
+
+          foreach ($source in $sources) {
+            $destination = Join-Path $workspace $source.Name
+            Write-Host "Cloning public reference source $($source.Name)..."
+            git clone --depth 1 --no-tags $source.Url $destination
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Reference source $($source.Name) could not be cloned; continuing with the remaining sources."
+              continue
+            }
+
+            $manifest = Join-Path $output "$($source.Name).json"
+            dotnet $scanner scan --source $source.Name --out $manifest --root $destination
+            if ($LASTEXITCODE -ne 0) {
+              throw "Route reference scanner failed for $($source.Name)."
+            }
+          }
+
+          $manifests = Get-ChildItem $output -Filter '*.json' -File
+          if (-not $manifests) {
+            throw 'No public route-reference manifests were generated.'
+          }
+
+          Write-Host "Generated $($manifests.Count) clean-room reference manifests."
+
+      - name: Upload clean-room route reference manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: EZBuddy-public-route-reference-manifests
+          path: artifacts/route-reference-manifests/*.json
+          if-no-files-found: error
+          retention-days: 14
