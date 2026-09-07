@@ -11,7 +11,7 @@ namespace EZBuddy.RebornBuddy.Bundles;
 
 public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopController
 {
-    public Task<FirstPlayableLoopStartResult> QueueAsync(
+    public async Task<FirstPlayableLoopStartResult> QueueAsync(
         FirstPlayableLoopSettings settings,
         CancellationToken cancellationToken = default)
     {
@@ -21,14 +21,14 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
         var license = LicenseRuntime.CurrentStatus;
         if (license is null || !license.IsValid)
         {
-            return Task.FromResult(FirstPlayableLoopStartResult.Rejected(
-                $"An active EZBuddy license is required: {license?.Message ?? "Licensing is not initialized."}"));
+            return FirstPlayableLoopStartResult.Rejected(
+                $"An active EZBuddy license is required: {license?.Message ?? "Licensing is not initialized."}");
         }
 
         var validationErrors = settings.Validate(requireDutyProfileExists: settings.RunDutyLoop);
         if (validationErrors.Count > 0)
         {
-            return Task.FromResult(FirstPlayableLoopStartResult.Rejected(string.Join(" ", validationErrors)));
+            return FirstPlayableLoopStartResult.Rejected(string.Join(" ", validationErrors));
         }
 
         var queue = EZBuddyRuntime.Queue;
@@ -41,8 +41,8 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
 
         if (active || queue.CurrentActivity is not null)
         {
-            return Task.FromResult(FirstPlayableLoopStartResult.Rejected(
-                "EZBuddy already has active or pending work. Finish, remove, or stop the existing queue before starting another first loop."));
+            return FirstPlayableLoopStartResult.Rejected(
+                "EZBuddy already has active or pending work. Finish, remove, or stop the existing queue before starting another first loop.");
         }
 
         try
@@ -62,20 +62,19 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
 
             if (plan.StageNames.Count == 0)
             {
-                return Task.FromResult(FirstPlayableLoopStartResult.Rejected(
-                    "No first-loop stages are enabled."));
+                return FirstPlayableLoopStartResult.Rejected("No first-loop stages are enabled.");
             }
 
-            queue.Start();
+            await EZBuddyRuntime.RunLoop.StartAsync(cancellationToken).ConfigureAwait(false);
 
-            return Task.FromResult(FirstPlayableLoopStartResult.Started(
-                $"Queued {plan.StageNames.Count} stage(s): {string.Join(" -> ", plan.StageNames)}",
-                plan.StageNames));
+            return FirstPlayableLoopStartResult.Started(
+                $"Queued {plan.StageNames.Count} stage(s): {string.Join(" -> ", plan.StageNames)}. The EZBuddy BotBase will consume the start signal on its next pulse.",
+                plan.StageNames);
         }
         catch (Exception exception)
         {
-            return Task.FromResult(FirstPlayableLoopStartResult.Rejected(
-                $"First loop could not be queued: {exception.Message}"));
+            return FirstPlayableLoopStartResult.Rejected(
+                $"First loop could not be queued: {exception.Message}");
         }
     }
 
