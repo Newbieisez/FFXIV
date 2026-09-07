@@ -23,10 +23,9 @@ public sealed record DutySupportLevelingOptions(
     int MinimumFreeInventorySlots = 5,
     DutyLootPolicy? LootPolicy = null,
     int PostRunConfirmationTimeoutSeconds = 20,
-    uint TerritoryId = 0)
+    uint TerritoryId = 0,
+    bool UseNativeRoute = false)
 {
-    // DutyId is retained for source/settings compatibility. It specifically means the
-    // RebornBuddy/Llama queue-registration ID, not the in-instance territory/map ID.
     public uint QueueDutyId => DutyId;
     public DutyLootPolicy EffectiveLootPolicy => LootPolicy ?? new DutyLootPolicy();
 
@@ -37,7 +36,14 @@ public sealed record DutySupportLevelingOptions(
             throw new ArgumentOutOfRangeException(nameof(DutyId));
         }
 
-        ArgumentException.ThrowIfNullOrWhiteSpace(ProfilePath);
+        if (!UseNativeRoute)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(ProfilePath);
+        }
+        else if (TerritoryId == 0)
+        {
+            throw new InvalidOperationException("Native duty routes require an explicit territory/map ID.");
+        }
 
         if (Mode == DutyAutomationMode.Trust && TrustId is null or <= 0)
         {
@@ -80,6 +86,7 @@ public sealed class DutySupportLevelingActivity : IEZActivity
         QueueDuty,
         AwaitEntry,
         ProfileRunning,
+        NativeRouteRunning,
         PostRun,
         AwaitDutyExit
     }
@@ -89,6 +96,7 @@ public sealed class DutySupportLevelingActivity : IEZActivity
     private readonly IMagitekAdapter _magitek;
     private readonly IDutyLevelingProgressProvider _progress;
     private readonly IDutyPostRunAdapter? _postRun;
+    private readonly IDutyInInstanceRunner? _nativeRoute;
     private readonly DutySupportLevelingOptions _options;
     private Phase _phase = Phase.QueueDuty;
     private DateTimeOffset? _postRunStartedAt;
@@ -101,7 +109,8 @@ public sealed class DutySupportLevelingActivity : IEZActivity
         IMagitekAdapter magitek,
         IDutyLevelingProgressProvider progress,
         DutySupportLevelingOptions options,
-        IDutyPostRunAdapter? postRun = null)
+        IDutyPostRunAdapter? postRun = null,
+        IDutyInInstanceRunner? nativeRoute = null)
     {
         _dutySupport = dutySupport ?? throw new ArgumentNullException(nameof(dutySupport));
         _orderBot = orderBot ?? throw new ArgumentNullException(nameof(orderBot));
@@ -109,7 +118,13 @@ public sealed class DutySupportLevelingActivity : IEZActivity
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _postRun = postRun;
+        _nativeRoute = nativeRoute;
         _options.Validate();
+
+        if (_options.UseNativeRoute && _nativeRoute is null)
+        {
+            throw new InvalidOperationException("Native duty route mode requires an in-instance route runner.");
+        }
     }
 
     public Guid Id { get; } = Guid.NewGuid();
@@ -129,6 +144,11 @@ public sealed class DutySupportLevelingActivity : IEZActivity
         if (!await _magitek.IsCurrentRoutineAsync(cancellationToken))
         {
             return false;
+        }
+
+        if (_options.UseNativeRoute)
+        {
+            return _nativeRoute is not null;
         }
 
         var orderStatus = await _orderBot.GetStatusAsync(cancellationToken);
@@ -162,26 +182,16 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             return ExecutionResult.Block("Duty Support leveling requires Magitek to be the active combat routine.");
         }
 
-        switch (_phase)
+        return _phase switch
         {
-            case Phase.QueueDuty:
-                return await QueueDutyAsync(cancellationToken);
-
-            case Phase.AwaitEntry:
-                return await AwaitEntryAsync(cancellationToken);
-
-            case Phase.ProfileRunning:
-                return await MonitorProfileAsync(cancellationToken);
-
-            case Phase.PostRun:
-                return await ProcessPostRunAsync(progress, cancellationToken);
-
-            case Phase.AwaitDutyExit:
-                return await AwaitDutyExitAsync(cancellationToken);
-
-            default:
-                return ExecutionResult.Fail("Duty Support leveling reached an unknown phase.");
-        }
+            Phase.QueueDuty => await QueueDutyAsync(cancellationToken),
+            Phase.AwaitEntry => await AwaitEntryAsync(cancellationToken),
+            Phase.ProfileRunning => await MonitorProfileAsync(cancellationToken),
+            Phase.NativeRouteRunning => await MonitorNativeRouteAsync(cancellationToken),
+            Phase.PostRun => await ProcessPostRunAsync(progress, cancellationToken),
+            Phase.AwaitDutyExit => await AwaitDutyExitAsync(cancellationToken),
+            _ => ExecutionResult.Fail("Duty Support leveling reached an unknown phase.")
+        };
     }
 
     public Task OnHaltAsync(CancellationToken cancellationToken = default)
@@ -215,7 +225,14 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             if (_options.TerritoryId != 0 && progress.TerritoryId != _options.TerritoryId)
             {
                 return ExecutionResult.Block(
-                    $"Duty queue reported zone-in, but territory {progress.TerritoryId} does not match configured territory {_options.TerritoryId}. OrderBot handoff was not started.");
+                    $"Duty queue reported zone-in, but territory {progress.TerritoryId} does not match configured territory {_options.TerritoryId}. No in-instance movement runner was started.");
+            }
+
+            if (_options.UseNativeRoute)
+            {
+                _phase = Phase.NativeRouteRunning;
+                return ExecutionResult.Yield(
+                    $"Duty entered in verified territory {_options.TerritoryId}; EZBuddy native objective route started. Magitek retains combat ownership.");
             }
 
             var profileStarted = await _orderBot.LoadProfileAsync(_options.ProfilePath, cancellationToken);
@@ -229,7 +246,7 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             _phase = Phase.ProfileRunning;
             return ExecutionResult.Yield(
                 _options.TerritoryId == 0
-                    ? "Duty entered and verified OrderBot profile handoff started; no territory verification was configured."
+                    ? "Duty entered and OrderBot profile handoff started; no territory verification was configured."
                     : $"Duty entered in verified territory {_options.TerritoryId}; OrderBot profile handoff started.");
         }
 
@@ -259,6 +276,39 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             return ExecutionResult.Yield($"Duty profile is running. Completed runs: {_completedRuns}.");
         }
 
+        return await TransitionRunnerCompletionAsync("OrderBot duty profile", cancellationToken);
+    }
+
+    private async Task<ExecutionResult> MonitorNativeRouteAsync(CancellationToken cancellationToken)
+    {
+        if (_nativeRoute is null)
+        {
+            return ExecutionResult.Block("Native duty route runner became unavailable.");
+        }
+
+        var result = await _nativeRoute.TickAsync(cancellationToken);
+        switch (result)
+        {
+            case NodeExecutionResult.InProgress:
+                return ExecutionResult.Yield("EZBuddy native duty route is progressing; combat remains delegated to Magitek.");
+            case NodeExecutionResult.FailedRetryable:
+                return ExecutionResult.Retry(
+                    "A native duty objective could not advance safely and will be retried.",
+                    TimeSpan.FromSeconds(2));
+            case NodeExecutionResult.FailedFatal:
+                return ExecutionResult.Block(
+                    "Native duty route reported a fatal objective/territory mismatch. Movement stopped before advancing to another node.");
+            case NodeExecutionResult.Completed:
+                return await TransitionRunnerCompletionAsync("EZBuddy native duty route", cancellationToken);
+            default:
+                return ExecutionResult.Fail("Native duty route returned an unknown node execution result.");
+        }
+    }
+
+    private async Task<ExecutionResult> TransitionRunnerCompletionAsync(
+        string runnerLabel,
+        CancellationToken cancellationToken)
+    {
         var dutyStatus = await _dutySupport.GetDutyStatusAsync(cancellationToken);
         if (!dutyStatus.IsInDungeon)
         {
@@ -268,12 +318,13 @@ public sealed class DutySupportLevelingActivity : IEZActivity
         if (_postRun is null)
         {
             return ExecutionResult.Block(
-                "The duty profile stopped while still inside the instance, and no post-run completion/loot/exit adapter is configured. EZBuddy will not guess that the duty is complete.");
+                $"{runnerLabel} ended while still inside the instance, and no post-run completion/loot/exit adapter is configured. EZBuddy will not guess that the duty is complete.");
         }
 
         _postRunStartedAt = DateTimeOffset.UtcNow;
         _phase = Phase.PostRun;
-        return ExecutionResult.Yield("Duty profile ended inside the instance; verifying director completion before loot or exit actions.");
+        return ExecutionResult.Yield(
+            $"{runnerLabel} ended inside the instance; verifying director completion before loot or exit actions.");
     }
 
     private async Task<ExecutionResult> ProcessPostRunAsync(
@@ -292,7 +343,7 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             if (DateTimeOffset.UtcNow - startedAt > TimeSpan.FromSeconds(_options.PostRunConfirmationTimeoutSeconds))
             {
                 return ExecutionResult.Block(
-                    $"Duty profile stopped, but instance completion was not confirmed within {_options.PostRunConfirmationTimeoutSeconds} seconds. No loot or leave action was taken. Last status: {postStatus.Message}");
+                    $"In-instance runner ended, but instance completion was not confirmed within {_options.PostRunConfirmationTimeoutSeconds} seconds. No loot or leave action was taken. Last status: {postStatus.Message}");
             }
 
             return ExecutionResult.Yield($"Waiting for confirmed duty completion. {postStatus.Message}");
