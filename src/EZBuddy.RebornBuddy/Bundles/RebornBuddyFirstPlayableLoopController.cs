@@ -107,13 +107,15 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
             .ToArray();
 
         var duty = new DutySupportLevelingOptions(
-            DutyId: settings.DutyId,
+            DutyId: settings.QueueDutyId,
             ProfilePath: profilePath,
             Mode: settings.DutyMode,
             TrustId: settings.TrustId,
             TargetLevel: settings.TargetLevel,
             MaxRuns: settings.MaxRuns,
-            MinimumFreeInventorySlots: settings.MinimumDutyFreeSlots);
+            MinimumFreeInventorySlots: settings.MinimumDutyFreeSlots,
+            LootPolicy: settings.EffectiveDutyLootPolicy,
+            TerritoryId: settings.DutyTerritoryId);
 
         if (settings.RunDutyLoop)
         {
