@@ -13,6 +13,10 @@ public sealed record FirstPlayableLoopSettings(
     int MaxRuns = 1,
     int MinimumDutyFreeSlots = 6,
     int InventoryTargetFreeSlots = 12,
+    int MinimumRetainerFreeSlots = 8,
+    bool AutoRepairGear = true,
+    int AutoRepairThresholdPercent = 30,
+    bool AutoExtractMateria = true,
     uint FoodItemId = 0,
     bool RequireWellFed = false,
     bool RunMaintenance = true,
@@ -46,9 +50,9 @@ public sealed record FirstPlayableLoopSettings(
                 errors.Add($"Duty profile does not exist: {DutyProfilePath}");
             }
 
-            if (DutyMode == DutyAutomationMode.Trust && (!TrustId.HasValue || TrustId.Value < 0))
+            if (DutyMode == DutyAutomationMode.Trust && (!TrustId.HasValue || TrustId.Value <= 0))
             {
-                errors.Add("Trust mode requires a valid Trust configuration ID.");
+                errors.Add("Trust mode requires a positive Trust configuration ID.");
             }
 
             if (TargetLevel is < 1 or > 100)
@@ -64,7 +68,7 @@ public sealed record FirstPlayableLoopSettings(
 
         if (MinimumDutyFreeSlots is < 0 or > 140)
         {
-            errors.Add("Minimum free inventory slots must be between 0 and 140.");
+            errors.Add("Minimum duty free inventory slots must be between 0 and 140.");
         }
 
         if (InventoryTargetFreeSlots is < 0 or > 140)
@@ -75,6 +79,16 @@ public sealed record FirstPlayableLoopSettings(
         if (InventoryTargetFreeSlots < MinimumDutyFreeSlots)
         {
             errors.Add("Inventory target free slots cannot be lower than the duty safety floor.");
+        }
+
+        if (MinimumRetainerFreeSlots is < 0 or > 140)
+        {
+            errors.Add("Minimum retainer free inventory slots must be between 0 and 140.");
+        }
+
+        if (AutoRepairThresholdPercent is < 0 or > 100)
+        {
+            errors.Add("Auto-repair threshold must be between 0 and 100 percent.");
         }
 
         if (RequireWellFed && FoodItemId == 0)
