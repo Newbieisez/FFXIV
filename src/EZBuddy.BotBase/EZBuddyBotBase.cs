@@ -1,6 +1,8 @@
 using Buddy.Coroutines;
 using EZBuddy.Core.Engine;
 using EZBuddy.Core.Runtime;
+using EZBuddy.Core.Safety;
+using EZBuddy.Core.Settings;
 using EZBuddy.RebornBuddy.Adapters;
 using EZBuddy.RebornBuddy.Settings;
 using ff14bot.Behavior;
@@ -12,6 +14,13 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
 {
     private Composite? _root;
     private CancellationTokenSource? _runCancellation;
+    private SessionSafetyConfiguration _sessionSafetyConfiguration = SessionSafetyConfiguration.Default;
+    private SessionSafetyCoordinator? _sessionSafetyCoordinator;
+    private DateTimeOffset _lastSafetyPulseUtc;
+    private DateTimeOffset _lastMeaningfulProgressUtc;
+    private TimeSpan _activeRuntime;
+    private string? _lastProgressFingerprint;
+    private bool _observedWorkThisSession;
 
     public override string Name => "EZBuddy";
     public override bool IsAutonomous => true;
@@ -30,8 +39,9 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         }
 
         _ = RebornBuddySettingsSession.GetOrCreate();
+        InitializeSessionSafety();
         _ = EZBuddyRuntime.RunLoop.StartAsync();
-        ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase started with shared per-character settings and a new execution cancellation scope.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase started with shared per-character settings, session-safety policy, and a new execution cancellation scope.");
     }
 
     public override void Stop()
@@ -90,6 +100,7 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         try
         {
             var result = await runLoop.TickAsync(token).ConfigureAwait(true);
+            await ApplySessionSafetyAsync(queue, runLoop, token).ConfigureAwait(true);
 
             if (result.RetryAfter is { } retryAfter && retryAfter > TimeSpan.Zero)
             {
@@ -107,6 +118,133 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
             return false;
         }
     }
+
+    private void InitializeSessionSafety()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _lastSafetyPulseUtc = now;
+        _lastMeaningfulProgressUtc = now;
+        _activeRuntime = TimeSpan.Zero;
+        _lastProgressFingerprint = null;
+        _observedWorkThisSession = false;
+        _sessionSafetyCoordinator = new SessionSafetyCoordinator(EZBuddyRuntime.RunLoop, EZBuddyRuntime.Notifications);
+        _sessionSafetyConfiguration = SessionSafetyConfiguration.Default;
+
+        try
+        {
+            var characterKey = SettingsPathSanitizer.Sanitize(ff14bot.Core.Player?.Name ?? "default");
+            var path = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "Settings",
+                "EZBuddy",
+                "Safety",
+                characterKey + ".session-safety.json");
+            var store = new JsonSessionSafetyConfigurationStore(path);
+            _sessionSafetyConfiguration = store.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            if (!File.Exists(path))
+            {
+                store.SaveAsync(_sessionSafetyConfiguration, CancellationToken.None).GetAwaiter().GetResult();
+            }
+
+            ff14bot.Helpers.Logging.Write(
+                _sessionSafetyConfiguration.Enabled
+                    ? $"[EZBuddy Safety] Session safety enabled from {path}."
+                    : $"[EZBuddy Safety] Session safety configuration created/loaded but remains opt-in disabled: {path}.");
+        }
+        catch (Exception exception)
+        {
+            _sessionSafetyConfiguration = SessionSafetyConfiguration.Default;
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Safety] Session safety configuration failed closed: {exception.Message}");
+        }
+    }
+
+    private async Task ApplySessionSafetyAsync(
+        ActivityQueueEngine queue,
+        IRunLoopController runLoop,
+        CancellationToken cancellationToken)
+    {
+        if (!_sessionSafetyConfiguration.Enabled || _sessionSafetyCoordinator is null)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var elapsedSincePulse = now - _lastSafetyPulseUtc;
+        _lastSafetyPulseUtc = now;
+
+        if (runLoop.State != RunLoopState.Running)
+        {
+            _lastMeaningfulProgressUtc = now;
+            _lastProgressFingerprint = BuildProgressFingerprint(queue.GetSnapshots());
+            return;
+        }
+
+        if (elapsedSincePulse > TimeSpan.Zero && elapsedSincePulse < TimeSpan.FromMinutes(5))
+        {
+            _activeRuntime += elapsedSincePulse;
+        }
+
+        var snapshots = queue.GetSnapshots();
+        var activeSnapshots = snapshots
+            .Where(snapshot => snapshot.State is
+                ActivityState.Pending or
+                ActivityState.Waiting or
+                ActivityState.Running or
+                ActivityState.GentleStopping or
+                ActivityState.Blocked)
+            .ToArray();
+
+        if (activeSnapshots.Length > 0 || snapshots.Any(snapshot => snapshot.CompletedAt >= now - elapsedSincePulse))
+        {
+            _observedWorkThisSession = true;
+        }
+
+        var fingerprint = BuildProgressFingerprint(snapshots);
+        if (!string.Equals(_lastProgressFingerprint, fingerprint, StringComparison.Ordinal))
+        {
+            _lastProgressFingerprint = fingerprint;
+            _lastMeaningfulProgressUtc = now;
+        }
+
+        var currentId = queue.CurrentActivityId;
+        var currentSnapshot = currentId.HasValue
+            ? snapshots.FirstOrDefault(snapshot => snapshot.ActivityId == currentId.Value)
+            : null;
+
+        var decision = SessionSafetyEvaluator.Evaluate(
+            _sessionSafetyConfiguration.ToPolicy(),
+            new SessionSafetySnapshot(
+                _activeRuntime,
+                now,
+                _lastMeaningfulProgressUtc,
+                QueueStarted: _observedWorkThisSession,
+                QueueHasPendingOrActiveWork: activeSnapshots.Length > 0,
+                ActivityExpectedToProgress: currentSnapshot?.State == ActivityState.Running,
+                CharacterMoving: false,
+                CurrentActivityName: currentSnapshot?.Name));
+
+        var applied = await _sessionSafetyCoordinator.ApplyAsync(decision, cancellationToken).ConfigureAwait(true);
+        if (applied.ActionApplied)
+        {
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Safety] {applied.Message}");
+            await runLoop.ApplyPendingSignalsAsync(cancellationToken).ConfigureAwait(true);
+        }
+    }
+
+    private static string BuildProgressFingerprint(IReadOnlyList<ActivityRuntimeSnapshot> snapshots)
+        => string.Join(
+            "|",
+            snapshots
+                .Where(snapshot => snapshot.State is
+                    ActivityState.Pending or
+                    ActivityState.Waiting or
+                    ActivityState.Running or
+                    ActivityState.GentleStopping or
+                    ActivityState.Blocked ||
+                    snapshot.CompletedAt.HasValue)
+                .OrderBy(snapshot => snapshot.EnqueuedAt)
+                .ThenBy(snapshot => snapshot.ActivityId)
+                .Select(snapshot => $"{snapshot.ActivityId:N}:{snapshot.State}:{snapshot.Attempts}:{snapshot.LastMessage}"));
 
     private static async Task StopQueueAsync(CancellationTokenSource? cancellation)
     {
