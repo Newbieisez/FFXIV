@@ -85,12 +85,19 @@ jobs:
             throw 'No public plugin-mechanic reference manifests were generated.'
           }
 
-          Write-Host "Generated $($routeManifests.Count) route manifests and $($mechanicManifests.Count) mechanic manifests."
+          $matrixJson = Join-Path $output 'EZBuddy-duty-coverage-matrix.json'
+          $matrixCsv = Join-Path $output 'EZBuddy-duty-coverage-matrix.csv'
+          dotnet $scanner matrix --manifest-dir $output --out $matrixJson --csv $matrixCsv
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Duty coverage matrix generation failed.'
+          }
+
+          Write-Host "Generated $($routeManifests.Count) route manifests, $($mechanicManifests.Count) mechanic manifests, and consolidated duty coverage JSON/CSV."
 
       - name: Upload clean-room reference manifests
         uses: actions/upload-artifact@v4
         with:
           name: EZBuddy-public-reference-manifests
-          path: artifacts/reference-manifests/*.json
+          path: artifacts/reference-manifests/*
           if-no-files-found: error
           retention-days: 14
