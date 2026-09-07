@@ -105,14 +105,16 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
 
         var maintenance = new MaintenanceOptions(
             MinimumFreeInventorySlots: Math.Min(settings.MinimumDutyFreeSlots, settings.InventoryTargetFreeSlots),
-            RepairBelowPercent: 30,
+            AutoRepairGear: settings.AutoRepairGear,
+            RepairBelowPercent: settings.AutoRepairThresholdPercent,
+            AutoExtractMateria: settings.AutoExtractMateria,
             FoodItemId: settings.FoodItemId,
             RequireWellFed: settings.RequireWellFed,
             AllowMenderFallback: true);
         maintenance.Validate();
 
         var retainers = new RetainerSweepOptions(
-            MinimumFreeInventorySlots: Math.Max(8, settings.MinimumDutyFreeSlots),
+            MinimumFreeInventorySlots: settings.MinimumRetainerFreeSlots,
             MinimumVentureTokens: 10,
             TargetVentureTokens: 50,
             VentureItemId: 21072,
@@ -121,7 +123,7 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
 
         var inventoryRelief = new InventoryPressureReliefOptions(
             TargetFreeInventorySlots: settings.InventoryTargetFreeSlots,
-            ExtractMateriaBeforeTurnIn: true,
+            ExtractMateriaBeforeTurnIn: settings.AutoExtractMateria,
             ApprovedExpertDeliveryItemIds: approvedItems);
         inventoryRelief.Validate();
 
