@@ -99,6 +99,51 @@ public sealed record EZBuddySettings(
         new(new FirstPlayableLoopSettings());
 }
 
+public interface ISettingsStoragePathProvider
+{
+    string GetSettingsFilePath(string profileOrCharacterId);
+}
+
+public sealed class DefaultSettingsStoragePathProvider : ISettingsStoragePathProvider
+{
+    private readonly string _rootDirectory;
+
+    public DefaultSettingsStoragePathProvider(string? rootDirectory = null)
+    {
+        _rootDirectory = rootDirectory ?? Path.Combine(Path.GetTempPath(), "EZBuddy", "Settings");
+    }
+
+    public string GetSettingsFilePath(string profileOrCharacterId)
+    {
+        var safeId = SettingsPathSanitizer.Sanitize(profileOrCharacterId);
+        return Path.Combine(_rootDirectory, safeId + ".json");
+    }
+}
+
+public static class SettingsPathSanitizer
+{
+    public static string Sanitize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "default";
+        }
+
+        var invalid = Path.GetInvalidFileNameChars().ToHashSet();
+        var chars = value.Trim()
+            .Select(ch => invalid.Contains(ch) || char.IsControl(ch) ? '_' : ch)
+            .ToArray();
+
+        var safe = new string(chars).Trim();
+        if (safe.Length == 0)
+        {
+            return "default";
+        }
+
+        return safe.Length <= 100 ? safe : safe[..100];
+    }
+}
+
 public interface IEZBuddySettingsStore
 {
     string FilePath { get; }
@@ -114,6 +159,8 @@ public sealed class JsonEZBuddySettingsStore : IEZBuddySettingsStore
         PropertyNameCaseInsensitive = true
     };
 
+    private readonly SemaphoreSlim _fileLock = new(1, 1);
+
     public JsonEZBuddySettingsStore(string? filePath = null)
     {
         FilePath = filePath ?? Path.Combine(
@@ -122,35 +169,49 @@ public sealed class JsonEZBuddySettingsStore : IEZBuddySettingsStore
             "EZBuddy.settings.json");
     }
 
+    public JsonEZBuddySettingsStore(ISettingsStoragePathProvider pathProvider, string profileOrCharacterId)
+    {
+        ArgumentNullException.ThrowIfNull(pathProvider);
+        FilePath = pathProvider.GetSettingsFilePath(profileOrCharacterId);
+    }
+
     public string FilePath { get; }
 
     public async Task<EZBuddySettings> LoadAsync(CancellationToken cancellationToken = default)
     {
-        if (!File.Exists(FilePath))
-        {
-            return EZBuddySettings.Default;
-        }
-
+        await _fileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var json = await File.ReadAllTextAsync(FilePath, Encoding.UTF8, cancellationToken).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(json))
+            if (!File.Exists(FilePath))
             {
                 return EZBuddySettings.Default;
             }
 
-            var settings = JsonSerializer.Deserialize<EZBuddySettings>(json, JsonOptions);
-            return settings is { SchemaVersion: 1 }
-                ? settings
-                : EZBuddySettings.Default;
+            try
+            {
+                var json = await File.ReadAllTextAsync(FilePath, Encoding.UTF8, cancellationToken).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    return EZBuddySettings.Default;
+                }
+
+                var settings = JsonSerializer.Deserialize<EZBuddySettings>(json, JsonOptions);
+                return settings is { SchemaVersion: 1 }
+                    ? settings
+                    : EZBuddySettings.Default;
+            }
+            catch (JsonException)
+            {
+                return EZBuddySettings.Default;
+            }
+            catch (IOException)
+            {
+                return EZBuddySettings.Default;
+            }
         }
-        catch (JsonException)
+        finally
         {
-            return EZBuddySettings.Default;
-        }
-        catch (IOException)
-        {
-            return EZBuddySettings.Default;
+            _fileLock.Release();
         }
     }
 
@@ -158,17 +219,167 @@ public sealed class JsonEZBuddySettingsStore : IEZBuddySettingsStore
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        var directory = Path.GetDirectoryName(FilePath);
-        if (!string.IsNullOrWhiteSpace(directory))
+        await _fileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            Directory.CreateDirectory(directory);
+            var directory = Path.GetDirectoryName(FilePath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var normalized = settings with { SchemaVersion = 1 };
+            var json = JsonSerializer.Serialize(normalized, JsonOptions);
+            var tempPath = FilePath + ".tmp";
+
+            await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8, cancellationToken).ConfigureAwait(false);
+            File.Move(tempPath, FilePath, overwrite: true);
+        }
+        finally
+        {
+            _fileLock.Release();
+        }
+    }
+}
+
+public interface IObservableSettings : IAsyncDisposable
+{
+    EZBuddySettings Current { get; }
+    string FilePath { get; }
+    event EventHandler<EZBuddySettings>? SettingsChanged;
+    Task LoadAsync(CancellationToken cancellationToken = default);
+    void Update(Func<EZBuddySettings, EZBuddySettings> update);
+    Task FlushAsync(CancellationToken cancellationToken = default);
+}
+
+public sealed class JsonEZBuddySettingsManager : IObservableSettings
+{
+    private readonly object _sync = new();
+    private readonly IEZBuddySettingsStore _store;
+    private readonly TimeSpan _debounce;
+    private CancellationTokenSource? _saveDebounceCts;
+    private Task _pendingSave = Task.CompletedTask;
+    private EZBuddySettings _current = EZBuddySettings.Default;
+    private bool _disposed;
+
+    public JsonEZBuddySettingsManager(
+        IEZBuddySettingsStore store,
+        TimeSpan? debounce = null)
+    {
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _debounce = debounce ?? TimeSpan.FromMilliseconds(650);
+    }
+
+    public EZBuddySettings Current
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _current;
+            }
+        }
+    }
+
+    public string FilePath => _store.FilePath;
+
+    public event EventHandler<EZBuddySettings>? SettingsChanged;
+
+    public async Task LoadAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        var loaded = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        lock (_sync)
+        {
+            _current = loaded;
         }
 
-        var normalized = settings with { SchemaVersion = 1 };
-        var json = JsonSerializer.Serialize(normalized, JsonOptions);
-        var tempPath = FilePath + ".tmp";
+        SettingsChanged?.Invoke(this, loaded);
+    }
 
-        await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8, cancellationToken).ConfigureAwait(false);
-        File.Move(tempPath, FilePath, overwrite: true);
+    public void Update(Func<EZBuddySettings, EZBuddySettings> update)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(update);
+
+        EZBuddySettings next;
+        lock (_sync)
+        {
+            next = update(_current) ?? throw new InvalidOperationException("Settings update returned null.");
+            _current = next with { SchemaVersion = 1 };
+            next = _current;
+        }
+
+        SettingsChanged?.Invoke(this, next);
+        ScheduleDebouncedSave();
+    }
+
+    public async Task FlushAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        CancellationTokenSource? debounce;
+        Task pending;
+        lock (_sync)
+        {
+            debounce = _saveDebounceCts;
+            _saveDebounceCts = null;
+            pending = _pendingSave;
+        }
+
+        debounce?.Cancel();
+        debounce?.Dispose();
+
+        try
+        {
+            await pending.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancelled debounce is expected when Flush forces an immediate atomic save.
+        }
+
+        await _store.SaveAsync(Current, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await FlushAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _disposed = true;
+        }
+    }
+
+    private void ScheduleDebouncedSave()
+    {
+        CancellationTokenSource cts;
+        lock (_sync)
+        {
+            _saveDebounceCts?.Cancel();
+            _saveDebounceCts?.Dispose();
+            cts = new CancellationTokenSource();
+            _saveDebounceCts = cts;
+            _pendingSave = DebouncedSaveAsync(cts.Token);
+        }
+    }
+
+    private async Task DebouncedSaveAsync(CancellationToken cancellationToken)
+    {
+        await Task.Delay(_debounce, cancellationToken).ConfigureAwait(false);
+        await _store.SaveAsync(Current, cancellationToken).ConfigureAwait(false);
+    }
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 }
