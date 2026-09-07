@@ -1,5 +1,6 @@
 using System.IO;
 using EZBuddy.Core.Adapters;
+using EZBuddy.Core.Engine;
 using EZBuddy.Core.Gear;
 using EZBuddy.Core.Goals;
 using EZBuddy.Core.Licensing;
@@ -14,9 +15,12 @@ using ff14bot.Managers;
 
 namespace EZBuddy.Plugin;
 
-public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenceProvider
+public sealed class RebornBuddyProductIntelligenceProvider :
+    IProductIntelligenceProvider,
+    IProductIntelligenceActionProvider
 {
     private const int DefaultSmartGearKeepItemLevel = 730;
+    private const string SmartGearActivityName = "Smart Gear Auto-Equip";
 
     public async Task<ProductIntelligenceUpdate> EvaluateAsync(
         GoalType goalType,
@@ -123,38 +127,103 @@ public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenc
         return new ProductIntelligenceUpdate(preflight, dryRun, goal, recommendations);
     }
 
+    public async Task<ProductActionResult> QueueSafeGearUpgradesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var characterAvailable = ff14bot.Core.Player is not null && !ff14bot.Behavior.CommonBehaviors.IsLoading;
+        if (!characterAvailable)
+        {
+            return new ProductActionResult(false, "A loaded character is required before Smart Gear upgrades can be queued.");
+        }
+
+        if (LicenseRuntime.CurrentStatus is not { IsValid: true })
+        {
+            return new ProductActionResult(false, "Smart Gear upgrades were not queued because the current license does not permit execution.");
+        }
+
+        if (HasActiveSmartGearActivity())
+        {
+            return new ProductActionResult(false, "A Smart Gear auto-equip activity is already pending or active in the queue.");
+        }
+
+        if (!EZBuddyRuntime.Adapters.TryGet<IGearEquipmentAdapter>(
+                "rebornbuddy-gear-equipment",
+                out var equipmentAdapter) ||
+            equipmentAdapter is null)
+        {
+            return new ProductActionResult(false, "The safe RebornBuddy gear-equipment bridge is not registered.");
+        }
+
+        var adapterStatus = await equipmentAdapter.GetStatusAsync(cancellationToken).ConfigureAwait(true);
+        if (adapterStatus.Health is AdapterHealth.Missing or AdapterHealth.Faulted)
+        {
+            return new ProductActionResult(false, $"Smart Gear upgrades were not queued: {adapterStatus.Message}");
+        }
+
+        var capture = await CaptureProductSnapshotAsync(characterAvailable, cancellationToken).ConfigureAwait(true);
+        if (!capture.HasFreshLiveData || capture.Snapshot is null)
+        {
+            return new ProductActionResult(
+                false,
+                "Smart Gear upgrades require a fresh live Product Snapshot; stale fallback data is never used for equipment changes.",
+                capture.Warning is null ? null : [capture.Warning]);
+        }
+
+        ProductAnalysisResult analysis;
+        try
+        {
+            analysis = ProductSnapshotAnalyzer.Analyze(
+                capture.Snapshot,
+                new ProductAnalysisRequest(
+                    ff14bot.Core.Me.CurrentJob.ToString(),
+                    DefaultSmartGearKeepItemLevel));
+        }
+        catch (Exception exception) when (exception is InvalidDataException or ArgumentException)
+        {
+            return new ProductActionResult(false, $"Smart Gear could not analyze the fresh snapshot safely: {exception.Message}");
+        }
+
+        if (analysis.Gear is null)
+        {
+            return new ProductActionResult(true, "No compatible owned gear was available to evaluate for the current job.");
+        }
+
+        var equipPlan = SmartGearEquipPlanner.Build(analysis.Gear);
+        if (!equipPlan.HasWork)
+        {
+            return new ProductActionResult(
+                true,
+                "No safe Inventory/Armory gear upgrades need to be queued for the current job.",
+                equipPlan.Warnings);
+        }
+
+        var activity = new SmartGearEquipActivity(equipmentAdapter, equipPlan);
+        EZBuddyRuntime.Queue.Enqueue(new ActivityQueueItem(
+            activity,
+            Priority: 95,
+            MaxRetries: 2,
+            ContinueOnFailure: false,
+            StopConditionLabel: "Safe Smart Gear upgrades applied"));
+
+        return new ProductActionResult(
+            true,
+            $"Queued {equipPlan.Instructions.Count} safe Smart Gear upgrade(s). The activity engine was not started automatically.",
+            equipPlan.Warnings);
+    }
+
     private static async Task<IReadOnlyList<string>> BuildProductSnapshotRecommendationsAsync(
         bool characterAvailable,
         CancellationToken cancellationToken)
     {
-        var characterName = ff14bot.Core.Player?.Name ?? "default";
-        var paths = new EZBuddyStoragePaths();
-        var store = new JsonProductSnapshotStore(paths.GetProductSnapshotPath(characterName));
-
-        string? captureWarning = null;
-        var previousSnapshot = await store.LoadAsync(cancellationToken).ConfigureAwait(true);
-        ProductSnapshotBundle? snapshot = previousSnapshot;
-        if (characterAvailable)
-        {
-            try
-            {
-                var collector = ProductSnapshotRuntime.Collector ?? new RebornBuddyProductSnapshotCollector();
-                var liveSnapshot = await collector.CaptureAsync(cancellationToken).ConfigureAwait(true);
-                snapshot = ProductSnapshotMerger.MergeLive(liveSnapshot, previousSnapshot);
-                await store.SaveAsync(snapshot, cancellationToken).ConfigureAwait(true);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                snapshot = previousSnapshot;
-                captureWarning = $"Product Snapshot: live capture failed; using the last good saved snapshot if available — {exception.Message}";
-            }
-        }
-
+        var capture = await CaptureProductSnapshotAsync(characterAvailable, cancellationToken).ConfigureAwait(true);
+        var snapshot = capture.Snapshot;
         if (snapshot is null)
         {
-            return captureWarning is null
+            return capture.Warning is null
                 ? ["Product Snapshot: no saved snapshot is available yet; Smart Gear, currency-cap, collections, procurement, and materia analysis will activate after a snapshot is captured."]
-                : [captureWarning, "Product Snapshot: no last-good snapshot was available for fallback analysis."];
+                : [capture.Warning, "Product Snapshot: no last-good snapshot was available for fallback analysis."];
         }
 
         var jobKey = characterAvailable
@@ -176,9 +245,9 @@ public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenc
         }
 
         var output = new List<string>();
-        if (captureWarning is not null)
+        if (capture.Warning is not null)
         {
-            output.Add(captureWarning);
+            output.Add(capture.Warning);
         }
 
         var age = DateTimeOffset.UtcNow - snapshot.CapturedAtUtc;
@@ -221,6 +290,47 @@ public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenc
 
         return output;
     }
+
+    private static async Task<ProductSnapshotCaptureResult> CaptureProductSnapshotAsync(
+        bool characterAvailable,
+        CancellationToken cancellationToken)
+    {
+        var characterName = ff14bot.Core.Player?.Name ?? "default";
+        var paths = new EZBuddyStoragePaths();
+        var store = new JsonProductSnapshotStore(paths.GetProductSnapshotPath(characterName));
+        var previousSnapshot = await store.LoadAsync(cancellationToken).ConfigureAwait(true);
+
+        if (!characterAvailable)
+        {
+            return new ProductSnapshotCaptureResult(previousSnapshot, null, HasFreshLiveData: false);
+        }
+
+        try
+        {
+            var collector = ProductSnapshotRuntime.Collector ?? new RebornBuddyProductSnapshotCollector();
+            var liveSnapshot = await collector.CaptureAsync(cancellationToken).ConfigureAwait(true);
+            var merged = ProductSnapshotMerger.MergeLive(liveSnapshot, previousSnapshot);
+            await store.SaveAsync(merged, cancellationToken).ConfigureAwait(true);
+            return new ProductSnapshotCaptureResult(merged, null, HasFreshLiveData: true);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return new ProductSnapshotCaptureResult(
+                previousSnapshot,
+                $"Product Snapshot: live capture failed; using the last good saved snapshot if available — {exception.Message}",
+                HasFreshLiveData: false);
+        }
+    }
+
+    private static bool HasActiveSmartGearActivity()
+        => EZBuddyRuntime.Queue.GetSnapshots().Any(snapshot =>
+            string.Equals(snapshot.Name, SmartGearActivityName, StringComparison.OrdinalIgnoreCase) &&
+            snapshot.State is
+                ActivityState.Pending or
+                ActivityState.Waiting or
+                ActivityState.Running or
+                ActivityState.GentleStopping or
+                ActivityState.Blocked);
 
     private static string FormatAge(TimeSpan age)
     {
@@ -277,4 +387,9 @@ public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenc
             return false;
         }
     }
+
+    private sealed record ProductSnapshotCaptureResult(
+        ProductSnapshotBundle? Snapshot,
+        string? Warning,
+        bool HasFreshLiveData);
 }
