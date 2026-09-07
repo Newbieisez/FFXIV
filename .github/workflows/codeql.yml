@@ -49,6 +49,9 @@ jobs:
       - name: Restore license issuer
         run: dotnet restore tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj
 
+      - name: Restore route reference scanner
+        run: dotnet restore tools/EZBuddy.RouteReferenceScanner/EZBuddy.RouteReferenceScanner.csproj
+
       - name: Build core
         run: dotnet build src/EZBuddy.Core/EZBuddy.Core.csproj -c Release --no-restore
 
@@ -63,6 +66,9 @@ jobs:
 
       - name: Build license issuer
         run: dotnet build tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj -c Release --no-restore
+
+      - name: Build route reference scanner
+        run: dotnet build tools/EZBuddy.RouteReferenceScanner/EZBuddy.RouteReferenceScanner.csproj -c Release --no-restore
 
       - name: Analyze
         uses: github/codeql-action/analyze@v3
