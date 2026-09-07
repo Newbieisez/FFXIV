@@ -109,6 +109,23 @@ public sealed class LisbethAdapter : ILisbethAdapter
         return true;
     }
 
+    public async Task<bool> ExtractMateriaAsync(CancellationToken cancellationToken = default)
+    {
+        if (!TryResolve(out var context, out _))
+        {
+            return false;
+        }
+
+        var method = context.Api.GetType().GetMethod("ExtractMateria", BindingFlags.Public | BindingFlags.Instance);
+        if (method?.Invoke(context.Api, null) is not Task task)
+        {
+            return false;
+        }
+
+        await task.WaitAsync(TimeSpan.FromMinutes(5), cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
     public async Task<bool> TravelAsync(uint zoneId, float x, float y, float z, bool land = true, CancellationToken cancellationToken = default)
     {
         if (!TryResolve(out var context, out _))
