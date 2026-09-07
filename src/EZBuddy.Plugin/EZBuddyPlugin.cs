@@ -9,6 +9,7 @@ using EZBuddy.RebornBuddy.Adapters;
 using EZBuddy.RebornBuddy.Bundles;
 using EZBuddy.RebornBuddy.Duties;
 using EZBuddy.RebornBuddy.Licensing;
+using EZBuddy.RebornBuddy.Runtime;
 using EZBuddy.RebornBuddy.Safety;
 using EZBuddy.RebornBuddy.Settings;
 using EZBuddy.UI;
@@ -249,6 +250,10 @@ public sealed class EZBuddyPlugin : BotPlugin
             var paths = new EZBuddyStoragePaths();
             var checkpoint = new JsonResumeCheckpointStore(paths.GetRuntimeCheckpointPath(characterName));
             var replay = new JsonLinesDecisionReplayRecorder(paths.GetDecisionReplayPath(characterName));
+
+            var recoveryReporter = new RebornBuddyRuntimeRecoveryReporter(checkpoint, EZBuddyRuntime.Notifications);
+            _ = recoveryReporter.AssessAndReportAsync().GetAwaiter().GetResult();
+
             _runtimePersistence = new RuntimePersistenceTelemetrySink(checkpoint, replay);
             EZBuddyRuntime.Telemetry.Register(_runtimePersistence);
             ff14bot.Helpers.Logging.Write($"[EZBuddy Runtime] Resume checkpoint and decision replay enabled for '{characterKey}'.");
