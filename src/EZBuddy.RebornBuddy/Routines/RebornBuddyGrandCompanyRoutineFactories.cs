@@ -39,7 +39,6 @@ public sealed class RebornBuddyInventoryQuantityProvider : IItemQuantityProvider
 
 public sealed class RebornBuddyGrandCompanyExpertDeliveryRoutineFactory : IRoutineActivityFactory
 {
-    private const string EnableEnvironmentKey = "EZBUDDY_RUN_GC_EXPERT_DELIVERY";
     private readonly IReadOnlyCollection<uint> _approvedItemIds;
 
     public RebornBuddyGrandCompanyExpertDeliveryRoutineFactory(IReadOnlyCollection<uint> approvedItemIds)
@@ -54,7 +53,7 @@ public sealed class RebornBuddyGrandCompanyExpertDeliveryRoutineFactory : IRouti
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!ReadBooleanEnvironmentFlag(EnableEnvironmentKey) || _approvedItemIds.Count == 0)
+        if (_approvedItemIds.Count == 0)
         {
             return Task.FromResult<IEZActivity?>(null);
         }
@@ -66,26 +65,23 @@ public sealed class RebornBuddyGrandCompanyExpertDeliveryRoutineFactory : IRouti
             new GrandCompanyExpertDeliveryOptions(_approvedItemIds));
         return Task.FromResult<IEZActivity?>(activity);
     }
-
-    internal static bool IsEnabled() => ReadBooleanEnvironmentFlag(EnableEnvironmentKey);
-
-    private static bool ReadBooleanEnvironmentFlag(string key)
-    {
-        var value = Environment.GetEnvironmentVariable(key)?.Trim();
-        return string.Equals(value, "1", StringComparison.Ordinal) ||
-               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
-    }
 }
 
 public sealed class RebornBuddyVentureTokenRefillRoutineFactory : IRoutineActivityFactory
 {
-    private const string EnableEnvironmentKey = "EZBUDDY_RUN_VENTURE_REFILL";
     private readonly IReadOnlyCollection<uint> _approvedExpertDeliveryItemIds;
+    private readonly int _minimumQuantity;
+    private readonly int _targetQuantity;
 
-    public RebornBuddyVentureTokenRefillRoutineFactory(IReadOnlyCollection<uint> approvedExpertDeliveryItemIds)
+    public RebornBuddyVentureTokenRefillRoutineFactory(
+        IReadOnlyCollection<uint> approvedExpertDeliveryItemIds,
+        int minimumQuantity,
+        int targetQuantity)
     {
         _approvedExpertDeliveryItemIds = approvedExpertDeliveryItemIds
             ?? throw new ArgumentNullException(nameof(approvedExpertDeliveryItemIds));
+        _minimumQuantity = minimumQuantity;
+        _targetQuantity = targetQuantity;
     }
 
     public string RoutineKey => "retainer-venture-refill";
@@ -95,11 +91,6 @@ public sealed class RebornBuddyVentureTokenRefillRoutineFactory : IRoutineActivi
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!ReadBooleanEnvironmentFlag(EnableEnvironmentKey))
-        {
-            return Task.FromResult<IEZActivity?>(null);
-        }
-
         var adapter = EZBuddyRuntime.Adapters.All.OfType<IGrandCompanyAdapter>().FirstOrDefault()
             ?? new LlamaGrandCompanyAdapter();
         IEZActivity activity = new VentureTokenRefillActivity(
@@ -107,34 +98,9 @@ public sealed class RebornBuddyVentureTokenRefillRoutineFactory : IRoutineActivi
             new RebornBuddyInventoryQuantityProvider(),
             new VentureTokenRefillOptions(
                 VentureItemId: 21072,
-                MinimumQuantity: ReadPositiveInt("EZBUDDY_VENTURE_MINIMUM") ?? 10,
-                TargetQuantity: ReadPositiveInt("EZBUDDY_VENTURE_TARGET") ?? 50,
+                MinimumQuantity: _minimumQuantity,
+                TargetQuantity: _targetQuantity,
                 ApprovedExpertDeliveryItemIds: _approvedExpertDeliveryItemIds));
         return Task.FromResult<IEZActivity?>(activity);
-    }
-
-    internal static bool IsEnabled() => ReadBooleanEnvironmentFlag(EnableEnvironmentKey);
-
-    private static int? ReadPositiveInt(string key)
-    {
-        var value = Environment.GetEnvironmentVariable(key)?.Trim();
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        if (!int.TryParse(value, out var parsed) || parsed < 0)
-        {
-            throw new InvalidOperationException($"{key} must be a non-negative integer when configured.");
-        }
-
-        return parsed;
-    }
-
-    private static bool ReadBooleanEnvironmentFlag(string key)
-    {
-        var value = Environment.GetEnvironmentVariable(key)?.Trim();
-        return string.Equals(value, "1", StringComparison.Ordinal) ||
-               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 }
