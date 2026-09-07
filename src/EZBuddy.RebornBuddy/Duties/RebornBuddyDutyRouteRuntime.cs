@@ -1,6 +1,5 @@
 using Clio.Utilities;
 using EZBuddy.Core.Duties;
-using ff14bot;
 using ff14bot.Managers;
 using ff14bot.Navigation;
 using ff14bot.Objects;
@@ -18,10 +17,11 @@ public sealed class RebornBuddyDutyRouteRecorderSource : IDutyRouteRecorderSourc
 
     public DutyRecorderFrame CaptureFrame(bool captureInteractionRequested)
     {
-        var player = Core.Player ?? throw new InvalidOperationException("Player is unavailable.");
+        var player = ff14bot.Core.Me ?? throw new InvalidOperationException("Player is unavailable.");
         var position = ToDutyPoint(player.Location);
-        var interaction = CaptureInteraction(player, position, captureInteractionRequested);
-        var casts = CaptureCasts(player, position);
+        var currentTarget = player.CurrentTarget;
+        var interaction = CaptureInteraction(currentTarget, position, captureInteractionRequested);
+        var casts = CaptureCasts(player.InCombat, currentTarget, position);
 
         return new DutyRecorderFrame(
             TerritoryId: WorldManager.ZoneId,
@@ -34,11 +34,10 @@ public sealed class RebornBuddyDutyRouteRecorderSource : IDutyRouteRecorderSourc
     }
 
     private DutyInteractionSnapshot? CaptureInteraction(
-        Character player,
+        GameObject? target,
         DutyPoint playerPosition,
         bool captureInteractionRequested)
     {
-        var target = player.CurrentTarget;
         DutyInteractionSnapshot? result = null;
 
         if (captureInteractionRequested && target is not null && target is not BattleCharacter)
@@ -83,9 +82,12 @@ public sealed class RebornBuddyDutyRouteRecorderSource : IDutyRouteRecorderSourc
         return result;
     }
 
-    private static IReadOnlyList<DutyCastSnapshot> CaptureCasts(Character player, DutyPoint playerPosition)
+    private static IReadOnlyList<DutyCastSnapshot> CaptureCasts(
+        bool inCombat,
+        GameObject? currentTarget,
+        DutyPoint playerPosition)
     {
-        if (!player.InCombat || player.CurrentTarget is not BattleCharacter target || !target.IsCasting)
+        if (!inCombat || currentTarget is not BattleCharacter target || !target.IsCasting)
         {
             return Array.Empty<DutyCastSnapshot>();
         }
@@ -181,7 +183,7 @@ public sealed class RebornBuddyDutyObjectiveNodeHost : IDutyObjectiveNodeHost
 {
     public DutyNodeHostSnapshot ReadState()
     {
-        var player = Core.Player ?? throw new InvalidOperationException("Player is unavailable.");
+        var player = ff14bot.Core.Me ?? throw new InvalidOperationException("Player is unavailable.");
         return new DutyNodeHostSnapshot(
             WorldManager.ZoneId,
             new DutyPoint(player.Location.X, player.Location.Y, player.Location.Z),
@@ -195,7 +197,12 @@ public sealed class RebornBuddyDutyObjectiveNodeHost : IDutyObjectiveNodeHost
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Navigator.MoveTo(new Vector3(position.X, position.Y, position.Z));
+        Navigator.MoveTo(new MoveToParameters(
+            new Vector3(position.X, position.Y, position.Z),
+            "EZBuddy duty objective")
+        {
+            UseMount = false
+        });
         return Task.FromResult(true);
     }
 
@@ -204,7 +211,7 @@ public sealed class RebornBuddyDutyObjectiveNodeHost : IDutyObjectiveNodeHost
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var player = Core.Player;
+        var player = ff14bot.Core.Me;
         if (player is null)
         {
             return Task.FromResult<DutyInteractableState?>(null);
@@ -248,7 +255,7 @@ public sealed class RebornBuddyDutyObjectiveNodeHost : IDutyObjectiveNodeHost
         }
 
         Navigator.PlayerMover.MoveStop();
-        Core.Me.Face(target);
+        ff14bot.Core.Me.Face(target);
         target.Target();
         target.Interact();
         return Task.FromResult(true);
