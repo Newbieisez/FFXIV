@@ -15,7 +15,7 @@ public interface IDutyNavigationProfileStore
     string Export(DutyNavigationProfile profile);
 }
 
-public sealed class JsonDutyNavigationProfileStore : IDutyNavigationProfileStore
+public sealed class JsonDutyNavigationProfileStore : IDutyNavigationProfileStore, IDutyRouteRecordingSink
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
