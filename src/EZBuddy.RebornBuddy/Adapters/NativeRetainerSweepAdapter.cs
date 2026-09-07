@@ -51,7 +51,7 @@ public sealed class NativeRetainerSweepAdapter : IRetainerSweepAdapter
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryResolveSweepMethod(out var type, out var method, out var target))
+        if (!TryResolveSweepMethod(out _, out var method, out var target))
         {
             return false;
         }
@@ -64,7 +64,7 @@ public sealed class NativeRetainerSweepAdapter : IRetainerSweepAdapter
                 return false;
             }
 
-            await task.WaitAsync(SweepTimeout, cancellationToken).ConfigureAwait(false);
+            await task.WaitAsync(SweepTimeout, cancellationToken);
 
             var resultProperty = task.GetType().GetProperty("Result", BindingFlags.Public | BindingFlags.Instance);
             if (resultProperty is null)
