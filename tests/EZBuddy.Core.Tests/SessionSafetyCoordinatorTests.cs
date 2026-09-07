@@ -9,14 +9,15 @@ public sealed class SessionSafetyCoordinatorTests
     [Fact]
     public async Task ApplyAsync_RepeatedBreakReminder_IsDeduplicated()
     {
+        var token = TestContext.Current.CancellationToken;
         var queue = new ActivityQueueEngine();
         var runLoop = new RunLoopController(queue);
         var notifications = new CapturingNotificationSink();
         var coordinator = new SessionSafetyCoordinator(runLoop, notifications);
         var decision = new SessionSafetyDecision(SessionSafetyAction.RecommendBreak, "Take a configured break.");
 
-        var first = await coordinator.ApplyAsync(decision);
-        var second = await coordinator.ApplyAsync(decision);
+        var first = await coordinator.ApplyAsync(decision, token);
+        var second = await coordinator.ApplyAsync(decision, token);
 
         Assert.True(first.ActionApplied);
         Assert.False(second.ActionApplied);
@@ -26,20 +27,21 @@ public sealed class SessionSafetyCoordinatorTests
     [Fact]
     public async Task ApplyAsync_StuckReview_PausesRunningLoop()
     {
+        var token = TestContext.Current.CancellationToken;
         var queue = new ActivityQueueEngine();
         var runLoop = new RunLoopController(queue);
         var notifications = new CapturingNotificationSink();
         var coordinator = new SessionSafetyCoordinator(runLoop, notifications);
 
-        await runLoop.StartAsync();
-        await runLoop.ApplyPendingSignalsAsync();
+        await runLoop.StartAsync(token);
+        await runLoop.ApplyPendingSignalsAsync(token);
         Assert.Equal(RunLoopState.Running, runLoop.State);
 
         var result = await coordinator.ApplyAsync(new SessionSafetyDecision(
             SessionSafetyAction.PauseForStuckReview,
             "No meaningful progress.",
-            RequiresUserReview: true));
-        await runLoop.ApplyPendingSignalsAsync();
+            RequiresUserReview: true), token);
+        await runLoop.ApplyPendingSignalsAsync(token);
 
         Assert.True(result.ActionApplied);
         Assert.Equal(RunLoopState.Paused, runLoop.State);
@@ -49,19 +51,20 @@ public sealed class SessionSafetyCoordinatorTests
     [Fact]
     public async Task ApplyAsync_MaxRuntime_RequestsSafeStop()
     {
+        var token = TestContext.Current.CancellationToken;
         var queue = new ActivityQueueEngine();
         var runLoop = new RunLoopController(queue);
         var notifications = new CapturingNotificationSink();
         var coordinator = new SessionSafetyCoordinator(runLoop, notifications);
 
-        await runLoop.StartAsync();
-        await runLoop.ApplyPendingSignalsAsync();
+        await runLoop.StartAsync(token);
+        await runLoop.ApplyPendingSignalsAsync(token);
 
         var result = await coordinator.ApplyAsync(new SessionSafetyDecision(
             SessionSafetyAction.RequestGentleStop,
             "Configured runtime reached.",
-            RequiresUserReview: true));
-        await runLoop.ApplyPendingSignalsAsync();
+            RequiresUserReview: true), token);
+        await runLoop.ApplyPendingSignalsAsync(token);
 
         Assert.True(result.ActionApplied);
         Assert.Equal(RunLoopState.Idle, runLoop.State);
@@ -71,6 +74,7 @@ public sealed class SessionSafetyCoordinatorTests
     [Fact]
     public async Task ApplyAsync_QueueComplete_UsesQueueCompleteNotification()
     {
+        var token = TestContext.Current.CancellationToken;
         var queue = new ActivityQueueEngine();
         var runLoop = new RunLoopController(queue);
         var notifications = new CapturingNotificationSink();
@@ -78,7 +82,7 @@ public sealed class SessionSafetyCoordinatorTests
 
         var result = await coordinator.ApplyAsync(new SessionSafetyDecision(
             SessionSafetyAction.QueueComplete,
-            "Queue is complete."));
+            "Queue is complete."), token);
 
         Assert.True(result.ActionApplied);
         Assert.Equal(NotificationEventType.QueueComplete, Assert.Single(notifications.Items).EventType);
@@ -87,15 +91,16 @@ public sealed class SessionSafetyCoordinatorTests
     [Fact]
     public async Task ApplyAsync_None_ResetsDeduplication()
     {
+        var token = TestContext.Current.CancellationToken;
         var queue = new ActivityQueueEngine();
         var runLoop = new RunLoopController(queue);
         var notifications = new CapturingNotificationSink();
         var coordinator = new SessionSafetyCoordinator(runLoop, notifications);
         var reminder = new SessionSafetyDecision(SessionSafetyAction.RecommendBreak, "Take a break.");
 
-        await coordinator.ApplyAsync(reminder);
-        await coordinator.ApplyAsync(new SessionSafetyDecision(SessionSafetyAction.None, "Safe."));
-        var repeatedAfterClear = await coordinator.ApplyAsync(reminder);
+        await coordinator.ApplyAsync(reminder, token);
+        await coordinator.ApplyAsync(new SessionSafetyDecision(SessionSafetyAction.None, "Safe."), token);
+        var repeatedAfterClear = await coordinator.ApplyAsync(reminder, token);
 
         Assert.True(repeatedAfterClear.ActionApplied);
         Assert.Equal(2, notifications.Items.Count);
