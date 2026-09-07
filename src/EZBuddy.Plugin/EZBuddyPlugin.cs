@@ -1,11 +1,12 @@
 using System.Windows;
-using EZBuddy.Core.Bundles;
 using EZBuddy.Core.Licensing;
 using EZBuddy.Core.Notifications;
 using EZBuddy.Core.Runtime;
+using EZBuddy.Core.Settings;
 using EZBuddy.RebornBuddy.Adapters;
 using EZBuddy.RebornBuddy.Bundles;
 using EZBuddy.RebornBuddy.Licensing;
+using EZBuddy.RebornBuddy.Settings;
 using EZBuddy.UI;
 using ff14bot.AClasses;
 
@@ -53,7 +54,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         _firstPlayableLoopQueuedThisEnable = false;
         if (ReadBooleanEnvironmentFlag("EZBUDDY_QUEUE_FIRST_LOOP_ON_ENABLE"))
         {
-            QueueConfiguredFirstPlayableLoop();
+            QueueSavedFirstPlayableLoop();
         }
 
         ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin enabled.");
@@ -148,7 +149,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         }
     }
 
-    private void QueueConfiguredFirstPlayableLoop()
+    private void QueueSavedFirstPlayableLoop()
     {
         if (_firstPlayableLoopQueuedThisEnable)
         {
@@ -157,37 +158,27 @@ public sealed class EZBuddyPlugin : BotPlugin
 
         try
         {
-            var status = LicenseRuntime.CurrentStatus;
-            if (status is null || !status.IsValid)
+            var store = CreateSettingsStore();
+            var settings = store.LoadAsync().GetAwaiter().GetResult();
+            var controller = new RebornBuddyFirstPlayableLoopController();
+            var result = controller.QueueAsync(settings.FirstPlayableLoop).GetAwaiter().GetResult();
+
+            if (!result.Success)
             {
-                ff14bot.Helpers.Logging.Write($"[EZBuddy Loop] First playable loop was not queued because an active license is required: {status?.Message ?? "Licensing is not initialized."}");
-                OpenDashboard(navigateToLicense: true);
+                ff14bot.Helpers.Logging.Write($"[EZBuddy Loop] Saved first-loop configuration was not queued: {result.Message}");
+                if (LicenseRuntime.CurrentStatus is not { IsValid: true })
+                {
+                    OpenDashboard(navigateToLicense: true);
+                }
                 return;
             }
 
-            var configuration = FirstPlayableLoopConfiguration.FromEnvironment();
-            var factory = new RebornBuddyFirstPlayableActivityFactory(configuration);
-            var planner = new FirstPlayableBundlePlanner(EZBuddyRuntime.Queue, factory);
-            var plan = planner.Enqueue(new FirstPlayableBundleOptions(
-                RunMaintenance: true,
-                RunRetainerSweep: true,
-                RunInventoryPressureRelief: true,
-                RunDailyProgression: true,
-                RunDutyLoop: true,
-                ReturnToIdle: true,
-                BasePriority: 10_000,
-                MaxRetriesPerStage: 2));
-
             _firstPlayableLoopQueuedThisEnable = true;
-            EZBuddyRuntime.Queue.Start();
-
-            ff14bot.Helpers.Logging.Write(
-                $"[EZBuddy Loop] Queued first playable loop with {plan.StageNames.Count} stages: {string.Join(" -> ", plan.StageNames)}");
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Loop] {result.Message}");
         }
         catch (Exception exception)
         {
-            ff14bot.Helpers.Logging.Write(
-                $"[EZBuddy Loop] Configuration prevented the loop from being queued: {exception.Message}");
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Loop] Saved configuration could not be queued: {exception.Message}");
         }
     }
 
@@ -212,7 +203,12 @@ public sealed class EZBuddyPlugin : BotPlugin
             {
                 if (_window is not { IsVisible: true })
                 {
-                    _window = new MainWindow(new RebornBuddyTelemetryProvider());
+                    var settingsManager = new JsonEZBuddySettingsManager(CreateSettingsStore());
+                    _window = new MainWindow(
+                        new RebornBuddyTelemetryProvider(),
+                        new RebornBuddyFirstPlayableLoopController(),
+                        settingsManager,
+                        EZBuddyRuntime.RunLoop);
                     _window.Closed += (_, _) => _window = null;
                     _window.Show();
                 }
@@ -225,6 +221,24 @@ public sealed class EZBuddyPlugin : BotPlugin
                 _window.Activate();
             }
         }));
+    }
+
+    private static JsonEZBuddySettingsStore CreateSettingsStore()
+        => new(
+            new RebornBuddySettingsStoragePathProvider(),
+            GetCharacterSettingsKey());
+
+    private static string GetCharacterSettingsKey()
+    {
+        try
+        {
+            var name = ff14bot.Core.Player?.Name;
+            return string.IsNullOrWhiteSpace(name) ? "default" : name;
+        }
+        catch
+        {
+            return "default";
+        }
     }
 
     private static bool ReadBooleanEnvironmentFlag(string key)
