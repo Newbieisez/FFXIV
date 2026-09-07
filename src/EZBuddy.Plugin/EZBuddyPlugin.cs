@@ -106,8 +106,13 @@ public sealed class EZBuddyPlugin : BotPlugin
             _notificationTelemetrySink = null;
         }
 
-        _discordNotificationSink?.Dispose();
-        _discordNotificationSink = null;
+        if (_discordNotificationSink is not null)
+        {
+            EZBuddyRuntime.Notifications.Unregister(_discordNotificationSink);
+            _discordNotificationSink.Dispose();
+            _discordNotificationSink = null;
+        }
+
         _onlineLicenseClient?.Dispose();
         _onlineLicenseClient = null;
         ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; queue paused, settings flushed, runtime checkpoint closed, route recorder/Product Intelligence released, and optional integrations released.");
@@ -161,18 +166,39 @@ public sealed class EZBuddyPlugin : BotPlugin
                 return;
             }
 
-            _discordNotificationSink?.Dispose();
+            if (_notificationTelemetrySink is not null)
+            {
+                EZBuddyRuntime.Telemetry.Unregister(_notificationTelemetrySink);
+                _notificationTelemetrySink = null;
+            }
+
+            if (_discordNotificationSink is not null)
+            {
+                EZBuddyRuntime.Notifications.Unregister(_discordNotificationSink);
+                _discordNotificationSink.Dispose();
+            }
+
             _discordNotificationSink = new DiscordWebhookNotificationSink(webhookUri);
-            _notificationTelemetrySink = new NotificationActivityTelemetrySink(_discordNotificationSink);
+            EZBuddyRuntime.Notifications.Register(_discordNotificationSink);
+            _notificationTelemetrySink = new NotificationActivityTelemetrySink(EZBuddyRuntime.Notifications);
             EZBuddyRuntime.Telemetry.Register(_notificationTelemetrySink);
-            ff14bot.Helpers.Logging.Write("[EZBuddy Notifications] Discord queue notifications enabled.");
+            ff14bot.Helpers.Logging.Write("[EZBuddy Notifications] Shared Discord notification pipeline enabled.");
         }
         catch (Exception exception)
         {
             ff14bot.Helpers.Logging.Write($"[EZBuddy Notifications] Initialization failed without exposing the webhook endpoint: {exception.Message}");
-            _notificationTelemetrySink = null;
-            _discordNotificationSink?.Dispose();
-            _discordNotificationSink = null;
+            if (_notificationTelemetrySink is not null)
+            {
+                EZBuddyRuntime.Telemetry.Unregister(_notificationTelemetrySink);
+                _notificationTelemetrySink = null;
+            }
+
+            if (_discordNotificationSink is not null)
+            {
+                EZBuddyRuntime.Notifications.Unregister(_discordNotificationSink);
+                _discordNotificationSink.Dispose();
+                _discordNotificationSink = null;
+            }
         }
     }
 
