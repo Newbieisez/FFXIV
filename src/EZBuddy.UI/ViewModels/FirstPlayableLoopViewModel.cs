@@ -38,6 +38,13 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
     private bool _runDailyProgression = true;
     private bool _runDutyLoop = true;
     private bool _returnToIdle = true;
+    private bool _runGrandCompanyExpertDeliveryDaily;
+    private bool _runVentureRefillDaily;
+    private string _ventureMinimumQuantity = "10";
+    private string _ventureTargetQuantity = "50";
+    private bool _runCustomDeliveriesWeekly;
+    private string _customDeliveryClientKeys = string.Empty;
+    private string _customDeliveryCraftingClass = "Carpenter";
     private string _statusMessage = "Load or configure the first playable loop, then run it.";
     private string _routeRecorderName = "Recorded Duty";
     private string _routeRecorderMinimumLevel = "1";
@@ -82,6 +89,18 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
         nameof(EZBuddy.Core.Duties.DutyLootAction.LeaveUnchanged)
     ];
 
+    public IReadOnlyList<string> CustomDeliveryCraftingClasses { get; } =
+    [
+        "Carpenter",
+        "Blacksmith",
+        "Armorer",
+        "Goldsmith",
+        "Leatherworker",
+        "Weaver",
+        "Alchemist",
+        "Culinarian"
+    ];
+
     public string SettingsPath => _settings.FilePath;
 
     public string QueueDutyId { get => _queueDutyId; set => SetAndSchedule(ref _queueDutyId, value); }
@@ -108,6 +127,13 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
     public bool RunDailyProgression { get => _runDailyProgression; set => SetAndSchedule(ref _runDailyProgression, value); }
     public bool RunDutyLoop { get => _runDutyLoop; set => SetAndSchedule(ref _runDutyLoop, value); }
     public bool ReturnToIdle { get => _returnToIdle; set => SetAndSchedule(ref _returnToIdle, value); }
+    public bool RunGrandCompanyExpertDeliveryDaily { get => _runGrandCompanyExpertDeliveryDaily; set => SetAndSchedule(ref _runGrandCompanyExpertDeliveryDaily, value); }
+    public bool RunVentureRefillDaily { get => _runVentureRefillDaily; set => SetAndSchedule(ref _runVentureRefillDaily, value); }
+    public string VentureMinimumQuantity { get => _ventureMinimumQuantity; set => SetAndSchedule(ref _ventureMinimumQuantity, value); }
+    public string VentureTargetQuantity { get => _ventureTargetQuantity; set => SetAndSchedule(ref _ventureTargetQuantity, value); }
+    public bool RunCustomDeliveriesWeekly { get => _runCustomDeliveriesWeekly; set => SetAndSchedule(ref _runCustomDeliveriesWeekly, value); }
+    public string CustomDeliveryClientKeys { get => _customDeliveryClientKeys; set => SetAndSchedule(ref _customDeliveryClientKeys, value); }
+    public string CustomDeliveryCraftingClass { get => _customDeliveryCraftingClass; set => SetAndSchedule(ref _customDeliveryCraftingClass, value); }
     public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
     public string RouteRecorderName { get => _routeRecorderName; set => SetProperty(ref _routeRecorderName, value); }
     public string RouteRecorderMinimumLevel { get => _routeRecorderMinimumLevel; set => SetProperty(ref _routeRecorderMinimumLevel, value); }
@@ -311,8 +337,11 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             !TryInt(InventoryTargetFreeSlots, "Inventory target free slots", out var targetSlots, out error) ||
             !TryInt(MinimumRetainerFreeSlots, "Minimum retainer free slots", out var minimumRetainerSlots, out error) ||
             !TryInt(AutoRepairThresholdPercent, "Auto-repair threshold", out var repairThreshold, out error) ||
+            !TryInt(VentureMinimumQuantity, "Venture minimum quantity", out var ventureMinimum, out error) ||
+            !TryInt(VentureTargetQuantity, "Venture target quantity", out var ventureTarget, out error) ||
             !TryUInt(FoodItemId, "Food item ID", allowEmpty: !RequireWellFed, out var foodItemId, out error) ||
-            !TryUIntList(ApprovedExpertDeliveryItemIds, out var approvedItems, out error))
+            !TryUIntList(ApprovedExpertDeliveryItemIds, out var approvedItems, out error) ||
+            !TryStringList(CustomDeliveryClientKeys, out var customDeliveryClients, out error))
         {
             return false;
         }
@@ -351,7 +380,14 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             ApprovedExpertDeliveryItemIds: approvedItems,
             DutyTerritoryId: territoryId,
             DutyLootAction: lootAction,
-            DutyLootPassAtOrBelowFreeSlots: lootPassAt);
+            DutyLootPassAtOrBelowFreeSlots: lootPassAt,
+            RunGrandCompanyExpertDeliveryDaily: RunGrandCompanyExpertDeliveryDaily,
+            RunVentureRefillDaily: RunVentureRefillDaily,
+            VentureMinimumQuantity: ventureMinimum,
+            VentureTargetQuantity: ventureTarget,
+            RunCustomDeliveriesWeekly: RunCustomDeliveriesWeekly,
+            CustomDeliveryClientKeys: customDeliveryClients,
+            CustomDeliveryCraftingClass: CustomDeliveryCraftingClass.Trim());
         return true;
     }
 
@@ -384,6 +420,13 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             RunDailyProgression = settings.RunDailyProgression;
             RunDutyLoop = settings.RunDutyLoop;
             ReturnToIdle = settings.ReturnToIdle;
+            RunGrandCompanyExpertDeliveryDaily = settings.RunGrandCompanyExpertDeliveryDaily;
+            RunVentureRefillDaily = settings.RunVentureRefillDaily;
+            VentureMinimumQuantity = settings.VentureMinimumQuantity.ToString();
+            VentureTargetQuantity = settings.VentureTargetQuantity.ToString();
+            RunCustomDeliveriesWeekly = settings.RunCustomDeliveriesWeekly;
+            CustomDeliveryClientKeys = string.Join(",", settings.EffectiveCustomDeliveryClientKeys);
+            CustomDeliveryCraftingClass = settings.CustomDeliveryCraftingClass;
         }
         finally
         {
@@ -489,6 +532,32 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
         }
 
         values = parsed.OrderBy(value => value).ToArray();
+        error = string.Empty;
+        return true;
+    }
+
+    private static bool TryStringList(string text, out IReadOnlyList<string> values, out string error)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            values = Array.Empty<string>();
+            error = string.Empty;
+            return true;
+        }
+
+        var parsed = text
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (parsed.Any(value => value.Length > 80))
+        {
+            values = Array.Empty<string>();
+            error = "Custom Delivery client keys must each be 80 characters or fewer.";
+            return false;
+        }
+
+        values = parsed;
         error = string.Empty;
         return true;
     }
