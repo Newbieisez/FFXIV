@@ -30,7 +30,7 @@
                 <StackPanel>
                     <TextBlock Text="PRODUCT INTELLIGENCE" Style="{StaticResource CaptionStyle}"/>
                     <TextBlock Text="Preflight · Dry Run · Goal Planner" FontSize="22" FontWeight="SemiBold" Margin="0,3,0,0"/>
-                    <TextBlock Text="Simulates and explains EZBuddy decisions without starting the activity queue."
+                    <TextBlock Text="Simulate first. Safe owned-gear upgrades can then be queued explicitly without starting the activity engine."
                                Foreground="{StaticResource TextMutedBrush}" FontSize="10" Margin="0,3,0,0"/>
                 </StackPanel>
                 <Border Grid.Column="1" Padding="12,7" CornerRadius="12" Background="#152C35" BorderBrush="#275568" BorderThickness="1">
@@ -53,7 +53,10 @@
                         <TextBlock Text="GOAL / SUBJECT" Style="{StaticResource CaptionStyle}"/>
                         <TextBox Text="{Binding GoalSubject, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,10,0" Padding="8,6"/>
                     </StackPanel>
-                    <Button Grid.Column="2" Content="Analyze / Simulate" Command="{Binding RefreshCommand}" Style="{StaticResource PrimaryButtonStyle}" VerticalAlignment="Bottom"/>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom">
+                        <Button Content="Analyze / Simulate" Command="{Binding RefreshCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0"/>
+                        <Button Content="Queue Safe Gear Upgrades" Command="{Binding QueueSafeGearUpgradesCommand}" Style="{StaticResource IconButtonStyle}"/>
+                    </StackPanel>
                 </Grid>
             </Border>
 
