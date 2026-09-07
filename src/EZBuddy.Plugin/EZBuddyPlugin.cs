@@ -179,6 +179,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         EZBuddyRuntime.Adapters.Register(new MagitekAdapter());
         EZBuddyRuntime.Adapters.Register(new OrderBotAdapter());
         EZBuddyRuntime.Adapters.Register(new LisbethAdapter());
+        EZBuddyRuntime.Adapters.Register(new RebornBuddyDutySupportAdapter());
         EZBuddyRuntime.Adapters.Register(new LlamaRetainerSweepAdapter());
         EZBuddyRuntime.Adapters.Register(new LlamaGrandCompanyAdapter());
     }
