@@ -33,6 +33,9 @@ jobs:
       - name: Restore license issuer
         run: dotnet restore tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj -p:NuGetAudit=true -p:NuGetAuditMode=all
 
+      - name: Restore route reference scanner
+        run: dotnet restore tools/EZBuddy.RouteReferenceScanner/EZBuddy.RouteReferenceScanner.csproj -p:NuGetAudit=true -p:NuGetAuditMode=all
+
       - name: Restore core tests
         run: dotnet restore tests/EZBuddy.Core.Tests/EZBuddy.Core.Tests.csproj -p:NuGetAudit=true -p:NuGetAuditMode=all
 
@@ -45,6 +48,9 @@ jobs:
       - name: Build license issuer
         run: dotnet build tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj -c Release --no-restore
 
+      - name: Build route reference scanner
+        run: dotnet build tools/EZBuddy.RouteReferenceScanner/EZBuddy.RouteReferenceScanner.csproj -c Release --no-restore
+
       - name: Run core tests
         run: dotnet test --project tests/EZBuddy.Core.Tests/EZBuddy.Core.Tests.csproj -c Release --no-restore
 
@@ -54,6 +60,7 @@ jobs:
           dotnet list src/EZBuddy.Plugin/EZBuddy.Plugin.csproj package --vulnerable --include-transitive
           dotnet list src/EZBuddy.BotBase/EZBuddy.BotBase.csproj package --vulnerable --include-transitive
           dotnet list tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj package --vulnerable --include-transitive
+          dotnet list tools/EZBuddy.RouteReferenceScanner/EZBuddy.RouteReferenceScanner.csproj package --vulnerable --include-transitive
           dotnet list tests/EZBuddy.Core.Tests/EZBuddy.Core.Tests.csproj package --vulnerable --include-transitive
 
       - name: Assemble and validate package
@@ -108,13 +115,14 @@ jobs:
             }
           }
 
-          # Signing secrets and the issuer must never be distributed with the client.
+          # Signing secrets and developer/research tools must never be distributed with the client.
           $forbidden = Get-ChildItem $root -Recurse -File | Where-Object {
             $_.Extension -in '.pem', '.pfx', '.p12', '.key' -or
-            $_.Name -like '*LicenseIssuer*'
+            $_.Name -like '*LicenseIssuer*' -or
+            $_.Name -like '*RouteReferenceScanner*'
           }
           if ($forbidden) {
-            throw "Package validation failed; forbidden signing/issuer material found: $($forbidden.FullName -join ', ')"
+            throw "Package validation failed; forbidden signing/tooling material found: $($forbidden.FullName -join ', ')"
           }
 
           Compress-Archive -Path "$root/*" -DestinationPath 'artifacts/EZBuddy.zip' -Force
@@ -132,5 +140,13 @@ jobs:
         with:
           name: EZBuddy-license-issuer
           path: tools/EZBuddy.LicenseIssuer/bin/Release/net10.0/**
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload route reference scanner
+        uses: actions/upload-artifact@v4
+        with:
+          name: EZBuddy-route-reference-scanner
+          path: tools/EZBuddy.RouteReferenceScanner/bin/Release/net10.0/**
           if-no-files-found: error
           retention-days: 14
