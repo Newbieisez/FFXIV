@@ -101,6 +101,31 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
             ? string.Empty
             : Path.GetFullPath(settings.DutyProfilePath);
 
+        DutyNavigationProfile? nativeRoute = null;
+        var useNativeRoute = settings.RunDutyLoop &&
+                             string.Equals(Path.GetExtension(profilePath), ".json", StringComparison.OrdinalIgnoreCase);
+        if (useNativeRoute)
+        {
+            var directory = Path.GetDirectoryName(profilePath)
+                ?? throw new InvalidOperationException("Native duty route profile path has no parent directory.");
+            var store = new JsonDutyNavigationProfileStore(directory);
+            nativeRoute = store.Load(settings.QueueDutyId)
+                ?? throw new InvalidDataException(
+                    $"No valid EZBuddy duty route for queue ID {settings.QueueDutyId} was found in {directory}.");
+            nativeRoute.Validate();
+
+            if (!nativeRoute.IsRunnable)
+            {
+                throw new InvalidDataException("The selected EZBuddy duty route is not runnable.");
+            }
+
+            if (settings.DutyTerritoryId == 0 || nativeRoute.TerritoryId != settings.DutyTerritoryId)
+            {
+                throw new InvalidDataException(
+                    $"Native route territory {nativeRoute.TerritoryId} does not match configured territory {settings.DutyTerritoryId}.");
+            }
+        }
+
         var approvedItems = settings.EffectiveApprovedExpertDeliveryItemIds
             .Where(itemId => itemId > 0)
             .Distinct()
@@ -115,7 +140,8 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
             MaxRuns: settings.MaxRuns,
             MinimumFreeInventorySlots: settings.MinimumDutyFreeSlots,
             LootPolicy: settings.EffectiveDutyLootPolicy,
-            TerritoryId: settings.DutyTerritoryId);
+            TerritoryId: settings.DutyTerritoryId,
+            UseNativeRoute: useNativeRoute);
 
         if (settings.RunDutyLoop)
         {
@@ -150,6 +176,7 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
             duty,
             maintenance,
             retainers,
-            inventoryRelief);
+            inventoryRelief,
+            nativeRoute);
     }
 }
