@@ -13,7 +13,8 @@ public sealed record FirstPlayableLoopConfiguration(
     DutySupportLevelingOptions Duty,
     MaintenanceOptions Maintenance,
     RetainerSweepOptions Retainers,
-    InventoryPressureReliefOptions InventoryRelief)
+    InventoryPressureReliefOptions InventoryRelief,
+    DutyNavigationProfile? NativeDutyRoute = null)
 {
     public static FirstPlayableLoopConfiguration FromEnvironment()
     {
@@ -207,13 +208,35 @@ public sealed class RebornBuddyFirstPlayableActivityFactory : IFirstPlayableActi
         => new DailyProgressionPlanningActivity();
 
     public IEZActivity CreateDutyLoopActivity()
-        => new DutySupportLevelingActivity(
+    {
+        IDutyInInstanceRunner? nativeRunner = null;
+        if (_configuration.NativeDutyRoute is { } route)
+        {
+            route.Validate();
+            if (route.QueueDutyId != _configuration.Duty.QueueDutyId ||
+                route.TerritoryId != _configuration.Duty.TerritoryId)
+            {
+                throw new InvalidOperationException(
+                    "Configured native duty route does not match the duty queue ID and territory ID selected for this loop.");
+            }
+
+            nativeRunner = new DutyObjectiveRouteRunner(
+                route,
+                new DutyObjectiveNodeExecutor(
+                    new RebornBuddyDutyObjectiveNodeHost(),
+                    new DutyObjectiveExecutorOptions(
+                        MinimumDutyFreeSlots: _configuration.Duty.MinimumFreeInventorySlots)));
+        }
+
+        return new DutySupportLevelingActivity(
             _dutySupport,
             _orderBot,
             _magitek,
             new RebornBuddyDutyLevelingProgressProvider(),
             _configuration.Duty,
-            new RebornBuddyDutyPostRunAdapter());
+            new RebornBuddyDutyPostRunAdapter(),
+            nativeRunner);
+    }
 
     private static TAdapter RequiredAdapter<TAdapter>()
         where TAdapter : class, IEZAdapter
