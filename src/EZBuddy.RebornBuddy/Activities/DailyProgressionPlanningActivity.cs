@@ -34,7 +34,7 @@ public sealed class DailyProgressionPlanningActivity : IEZActivity
         var result = await _planner.ScanBuildAndQueueAsync(
             "EZBuddy_DailyProgression",
             priority: 1_000,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken);
 
         _complete = true;
 
