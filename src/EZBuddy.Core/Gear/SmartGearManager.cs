@@ -137,7 +137,11 @@ public static class SmartGearManager
                     .ThenBy(item => item.ItemId)
                     .First());
 
-        var bestIds = bestBySlot.Values.Select(item => item.ItemId).ToHashSet();
+        // Keep the exact selected snapshot instance rather than only ItemId. A player can own
+        // multiple copies of the same item ID, and only the selected copy should be labelled
+        // EquipBest. This also prevents an equipped copy from causing an unequipped duplicate
+        // to inherit the same best-item disposition.
+        var bestItems = bestBySlot.Values.ToArray();
         var recommendations = new List<GearRecommendation>(all.Length);
 
         foreach (var item in all)
@@ -150,7 +154,7 @@ public static class SmartGearManager
                 continue;
             }
 
-            if (bestIds.Contains(item.ItemId) && item.SupportsJob(scoreProfile.JobKey))
+            if (bestItems.Any(best => ReferenceEquals(best, item)) && item.SupportsJob(scoreProfile.JobKey))
             {
                 recommendations.Add(new GearRecommendation(item, GearDisposition.EquipBest, score,
                     $"Highest-scoring owned {item.Slot} for {scoreProfile.JobKey}."));
