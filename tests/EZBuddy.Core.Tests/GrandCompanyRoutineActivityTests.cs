@@ -65,20 +65,12 @@ public sealed class GrandCompanyRoutineActivityTests
     public async Task VentureRefillUsesOneApprovedDeliveryThenOneFinalPurchase()
     {
         var quantities = new MutableQuantityProvider(21072, 2);
+        var purchaseCount = 0;
         var adapter = new FakeGrandCompanyAdapter
         {
             DeliveryResult = true,
-            OnPurchase = (_, _, target) =>
-            {
-                if (quantities.GetQuantity(21072) == 2 && adapterPurchaseCountPlaceholder == 0)
-                {
-                    return;
-                }
-                quantities.Set(21072, target);
-            }
+            PurchaseResult = false
         };
-
-        var purchaseCount = 0;
         adapter.OnPurchase = (_, _, target) =>
         {
             purchaseCount++;
@@ -119,8 +111,6 @@ public sealed class GrandCompanyRoutineActivityTests
         Assert.Equal(ExecutionDisposition.Block, result.Disposition);
         Assert.Equal(0, adapter.DeliveryCalls);
     }
-
-    private static int adapterPurchaseCountPlaceholder => 0;
 
     private sealed class MutableQuantityProvider(uint itemId, int quantity) : IItemQuantityProvider
     {
