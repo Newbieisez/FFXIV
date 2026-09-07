@@ -20,6 +20,10 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
     private string _maxRuns = "1";
     private string _minimumDutyFreeSlots = "6";
     private string _inventoryTargetFreeSlots = "12";
+    private string _minimumRetainerFreeSlots = "8";
+    private bool _autoRepairGear = true;
+    private string _autoRepairThresholdPercent = "30";
+    private bool _autoExtractMateria = true;
     private string _foodItemId = string.Empty;
     private string _approvedExpertDeliveryItemIds = string.Empty;
     private bool _requireWellFed;
@@ -64,6 +68,10 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
     public string MaxRuns { get => _maxRuns; set => SetAndSchedule(ref _maxRuns, value); }
     public string MinimumDutyFreeSlots { get => _minimumDutyFreeSlots; set => SetAndSchedule(ref _minimumDutyFreeSlots, value); }
     public string InventoryTargetFreeSlots { get => _inventoryTargetFreeSlots; set => SetAndSchedule(ref _inventoryTargetFreeSlots, value); }
+    public string MinimumRetainerFreeSlots { get => _minimumRetainerFreeSlots; set => SetAndSchedule(ref _minimumRetainerFreeSlots, value); }
+    public bool AutoRepairGear { get => _autoRepairGear; set => SetAndSchedule(ref _autoRepairGear, value); }
+    public string AutoRepairThresholdPercent { get => _autoRepairThresholdPercent; set => SetAndSchedule(ref _autoRepairThresholdPercent, value); }
+    public bool AutoExtractMateria { get => _autoExtractMateria; set => SetAndSchedule(ref _autoExtractMateria, value); }
     public string FoodItemId { get => _foodItemId; set => SetAndSchedule(ref _foodItemId, value); }
     public string ApprovedExpertDeliveryItemIds { get => _approvedExpertDeliveryItemIds; set => SetAndSchedule(ref _approvedExpertDeliveryItemIds, value); }
     public bool RequireWellFed { get => _requireWellFed; set => SetAndSchedule(ref _requireWellFed, value); }
@@ -106,7 +114,7 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
     public async ValueTask DisposeAsync()
     {
         _settings.SettingsChanged -= OnSettingsChanged;
-        await _settings.DisposeAsync().ConfigureAwait(false);
+        await _settings.FlushAsync().ConfigureAwait(false);
     }
 
     private async Task SaveAsync()
@@ -190,14 +198,13 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
     }
 
     private void OnSettingsChanged(object? sender, EZBuddySettings settings)
-    {
-        if (_applyingSettings)
+        => DispatchToUi(() =>
         {
-            return;
-        }
-
-        Apply(settings.FirstPlayableLoop);
-    }
+            if (!_applyingSettings)
+            {
+                Apply(settings.FirstPlayableLoop);
+            }
+        });
 
     private bool TryBuildSettings(out FirstPlayableLoopSettings settings, out string error)
     {
@@ -210,6 +217,8 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             !TryInt(MaxRuns, "Maximum runs", out var maxRuns, out error) ||
             !TryInt(MinimumDutyFreeSlots, "Minimum duty free slots", out var minimumSlots, out error) ||
             !TryInt(InventoryTargetFreeSlots, "Inventory target free slots", out var targetSlots, out error) ||
+            !TryInt(MinimumRetainerFreeSlots, "Minimum retainer free slots", out var minimumRetainerSlots, out error) ||
+            !TryInt(AutoRepairThresholdPercent, "Auto-repair threshold", out var repairThreshold, out error) ||
             !TryUInt(FoodItemId, "Food item ID", allowEmpty: !RequireWellFed, out var foodItemId, out error) ||
             !TryUIntList(ApprovedExpertDeliveryItemIds, out var approvedItems, out error))
         {
@@ -229,6 +238,10 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             MaxRuns: maxRuns,
             MinimumDutyFreeSlots: minimumSlots,
             InventoryTargetFreeSlots: targetSlots,
+            MinimumRetainerFreeSlots: minimumRetainerSlots,
+            AutoRepairGear: AutoRepairGear,
+            AutoRepairThresholdPercent: repairThreshold,
+            AutoExtractMateria: AutoExtractMateria,
             FoodItemId: foodItemId,
             RequireWellFed: RequireWellFed,
             RunMaintenance: RunMaintenance,
@@ -255,6 +268,10 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             MaxRuns = settings.MaxRuns.ToString();
             MinimumDutyFreeSlots = settings.MinimumDutyFreeSlots.ToString();
             InventoryTargetFreeSlots = settings.InventoryTargetFreeSlots.ToString();
+            MinimumRetainerFreeSlots = settings.MinimumRetainerFreeSlots.ToString();
+            AutoRepairGear = settings.AutoRepairGear;
+            AutoRepairThresholdPercent = settings.AutoRepairThresholdPercent.ToString();
+            AutoExtractMateria = settings.AutoExtractMateria;
             FoodItemId = settings.FoodItemId == 0 ? string.Empty : settings.FoodItemId.ToString();
             ApprovedExpertDeliveryItemIds = string.Join(",", settings.EffectiveApprovedExpertDeliveryItemIds);
             RequireWellFed = settings.RequireWellFed;
@@ -280,6 +297,18 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
 
         ScheduleSettingsUpdate();
         return true;
+    }
+
+    private static void DispatchToUi(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        dispatcher.BeginInvoke(action);
     }
 
     private static bool TryInt(string text, string label, out int value, out string error)
