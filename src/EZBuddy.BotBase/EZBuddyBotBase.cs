@@ -44,13 +44,24 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
 
         _ = EZBuddyRuntime.RunLoop.StopAsync();
 
+        try
+        {
+            RebornBuddySettingsSession.FlushPendingSavesAsync(CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (Exception exception)
+        {
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Settings] Stop flush failed: {exception.Message}");
+        }
+
         var cancellation = Interlocked.Exchange(ref _runCancellation, null);
         cancellation?.Cancel();
 
         EZBuddyRuntime.RunLoop.NotifyHostStopRequested();
         EZBuddyRuntime.Queue.Pause();
         _ = StopQueueAsync(cancellation);
-        ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase stop requested. Active activity cancellation propagated, pending queue preserved, and settings flush scheduled.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase stop requested. Settings flushed, active activity cancellation propagated, and pending queue preserved.");
     }
 
     private async Task<bool> PulseQueueAsync()
@@ -104,8 +115,6 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
             await EZBuddyRuntime.Queue.StopAsync(
                 preservePendingQueue: true,
                 cancellationToken: CancellationToken.None).ConfigureAwait(false);
-
-            await RebornBuddySettingsSession.FlushPendingSavesAsync(CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
