@@ -77,10 +77,10 @@ public sealed class InventoryPressureReliefActivity : IEZActivity
         if (_options.ExtractMateriaBeforeTurnIn && !_materiaAttempted)
         {
             _materiaAttempted = true;
-            var lisbethStatus = await _lisbeth.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+            var lisbethStatus = await _lisbeth.GetStatusAsync(cancellationToken);
             if (lisbethStatus.Health is AdapterHealth.Ready or AdapterHealth.Busy)
             {
-                var extracted = await _lisbeth.ExtractMateriaAsync(cancellationToken).ConfigureAwait(false);
+                var extracted = await _lisbeth.ExtractMateriaAsync(cancellationToken);
                 if (extracted)
                 {
                     return ExecutionResult.Continue(
@@ -103,16 +103,14 @@ public sealed class InventoryPressureReliefActivity : IEZActivity
         }
 
         _deliveryAttempted = true;
-        var gcStatus = await _grandCompany.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+        var gcStatus = await _grandCompany.GetStatusAsync(cancellationToken);
         if (gcStatus.Health is not (AdapterHealth.Ready or AdapterHealth.Degraded))
         {
             return ExecutionResult.Block(
                 $"Inventory pressure requires an approved Grand Company turn-in, but the GC bridge is unavailable: {gcStatus.Message}");
         }
 
-        var delivered = await _grandCompany
-            .RunExpertDeliveryAsync(approvedItems, cancellationToken)
-            .ConfigureAwait(false);
+        var delivered = await _grandCompany.RunExpertDeliveryAsync(approvedItems, cancellationToken);
 
         if (!delivered)
         {
