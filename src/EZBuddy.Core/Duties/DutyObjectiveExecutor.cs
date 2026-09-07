@@ -8,6 +8,12 @@ public enum NodeExecutionResult
     FailedFatal
 }
 
+public interface IDutyInInstanceRunner
+{
+    bool IsComplete { get; }
+    Task<NodeExecutionResult> TickAsync(CancellationToken cancellationToken = default);
+}
+
 public sealed record DutyNodeHostSnapshot(
     uint TerritoryId,
     DutyPoint PlayerPosition,
@@ -121,7 +127,6 @@ public sealed class DutyObjectiveNodeExecutor
 
         if (node.ObjectId is null or 0)
         {
-            // Coordinate-only chest nodes remain optional and cannot be interacted with safely.
             return NodeExecutionResult.Completed;
         }
 
@@ -143,7 +148,6 @@ public sealed class DutyObjectiveNodeExecutor
         if (state.InCombat)
         {
             _bossCombatObserved = true;
-            await _host.StopMovementAsync(cancellationToken);
             return NodeExecutionResult.InProgress;
         }
 
@@ -160,9 +164,6 @@ public sealed class DutyObjectiveNodeExecutor
                 : NodeExecutionResult.FailedRetryable;
         }
 
-        // Reaching the arena boundary is not completion. Wait for combat to begin, then
-        // latch that engagement. While engaged, movement ownership remains with the
-        // mechanic layer and combat ownership remains with Magitek.
         await _host.StopMovementAsync(cancellationToken);
         return NodeExecutionResult.InProgress;
     }
@@ -216,7 +217,6 @@ public sealed class DutyObjectiveNodeExecutor
             }
         }
 
-        // Do not double-click. Subsequent ticks wait for targetability/visibility to change.
         return NodeExecutionResult.InProgress;
     }
 
@@ -246,7 +246,7 @@ public sealed class DutyObjectiveNodeExecutor
     }
 }
 
-public sealed class DutyObjectiveRouteRunner
+public sealed class DutyObjectiveRouteRunner : IDutyInInstanceRunner
 {
     private readonly DutyNavigationProfile _profile;
     private readonly DutyObjectiveNodeExecutor _executor;
