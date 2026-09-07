@@ -81,11 +81,13 @@
                                     <TextBox Text="{Binding FirstLoop.DutyTerritoryId, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
                                 </StackPanel>
                             </Grid>
-                            <TextBlock Text="Queue ID selects the Duty Support/Trust entry. Territory ID verifies the zone before OrderBot receives movement control."
+                            <TextBlock Text="Queue ID selects Duty Support/Trust entry. Territory ID is verified after zone-in before any in-instance movement runner starts."
                                        Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,0,0,8"/>
 
-                            <TextBlock Text="ORDERBOT PROFILE PATH" Style="{StaticResource CaptionStyle}"/>
-                            <TextBox Text="{Binding FirstLoop.DutyProfilePath, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
+                            <TextBlock Text="IN-INSTANCE PROFILE PATH" Style="{StaticResource CaptionStyle}"/>
+                            <TextBox Text="{Binding FirstLoop.DutyProfilePath, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,3" Padding="8,6"/>
+                            <TextBlock Text=".xml = OrderBot handoff. .json = validated EZBuddy clean-room native route."
+                                       Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,0,0,8"/>
 
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -138,6 +140,39 @@
                                     <TextBox Text="{Binding FirstLoop.DutyLootPassAtOrBelowFreeSlots, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
                                 </StackPanel>
                             </Grid>
+
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="5" Padding="9" Margin="0,6,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="CLEAN-ROOM ROUTE RECORDER" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBlock Text="Developer tool: walk the route manually while EZBuddy samples movement and observations on the BotBase tick."
+                                               Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,4,0,7"/>
+                                    <TextBlock Text="ROUTE NAME" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBox Text="{Binding FirstLoop.RouteRecorderName, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,7" Padding="8,6"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="1*"/>
+                                            <ColumnDefinition Width="8"/>
+                                            <ColumnDefinition Width="1*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="MIN LEVEL" Style="{StaticResource CaptionStyle}"/>
+                                            <TextBox Text="{Binding FirstLoop.RouteRecorderMinimumLevel, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,7" Padding="8,6"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="MAX LEVEL" Style="{StaticResource CaptionStyle}"/>
+                                            <TextBox Text="{Binding FirstLoop.RouteRecorderMaximumLevel, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,7" Padding="8,6"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <WrapPanel Margin="0,2,0,5">
+                                        <Button Content="● Start Recorder" Command="{Binding FirstLoop.StartRouteRecorderCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,7,5"/>
+                                        <Button Content="Capture Target" Command="{Binding FirstLoop.CaptureRouteTargetCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,7,5"/>
+                                        <Button Content="Stop &amp; Save" Command="{Binding FirstLoop.StopRouteRecorderCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,7,5"/>
+                                    </WrapPanel>
+                                    <TextBlock Text="{Binding FirstLoop.RouteRecorderStatus}" Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Boss casts are stored as observations only. They are not promoted to stack/gaze/avoidance rules until explicitly validated."
+                                               Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Border>
 
@@ -205,7 +240,7 @@
                             <CheckBox Content="Duty Loop" IsChecked="{Binding FirstLoop.RunDutyLoop}" Margin="0,0,18,8"/>
                             <CheckBox Content="Return to Idle" IsChecked="{Binding FirstLoop.ReturnToIdle}" Margin="0,0,18,8"/>
                         </WrapPanel>
-                        <TextBlock Text="Combat remains delegated to Magitek. Territory verification protects the OrderBot handoff; destructive GC actions remain allowlist-only."
+                        <TextBlock Text="Combat remains delegated to Magitek. Native route execution issues no movement while BossBoundary combat is active; destructive GC actions remain allowlist-only."
                                    Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,5,0,0"/>
                     </StackPanel>
                 </Border>
