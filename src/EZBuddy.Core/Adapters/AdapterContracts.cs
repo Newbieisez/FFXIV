@@ -18,6 +18,24 @@ public sealed record AdapterStatus(
     DateTimeOffset CheckedAt,
     Version? Version = null);
 
+public enum DutyAutomationMode
+{
+    DutySupport,
+    Trust
+}
+
+public sealed record DutyAutomationRequest(
+    uint DutyId,
+    DutyAutomationMode Mode,
+    int? TrustId = null);
+
+public sealed record DutyAutomationStatus(
+    string State,
+    bool IsQueued,
+    bool CanCommence,
+    bool IsJoining,
+    bool IsInDungeon);
+
 public interface IEZAdapter
 {
     string Key { get; }
@@ -44,6 +62,12 @@ public interface IOrderBotAdapter : IEZAdapter
 {
     Task<bool> LoadProfileAsync(string profilePathOrIdentifier, CancellationToken cancellationToken = default);
     Task<bool> IsProfileRunningAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IDutySupportAdapter : IEZAdapter
+{
+    Task<DutyAutomationStatus> GetDutyStatusAsync(CancellationToken cancellationToken = default);
+    Task<bool> EnterAsync(DutyAutomationRequest request, CancellationToken cancellationToken = default);
 }
 
 public interface IRetainerSweepAdapter : IEZAdapter
