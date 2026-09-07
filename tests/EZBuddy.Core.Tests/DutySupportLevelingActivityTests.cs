@@ -37,6 +37,30 @@ public sealed class DutySupportLevelingActivityTests
     }
 
     [Fact]
+    public async Task EntryAndProfileHandoffOccurAcrossSeparateTicks()
+    {
+        var duty = new FakeDutyAdapter(stayQueuedBeforeEntry: true);
+        var orderBot = new FakeOrderBotAdapter();
+        var activity = new DutySupportLevelingActivity(
+            duty,
+            orderBot,
+            new FakeMagitekAdapter(),
+            new StaticProgressProvider(new DutyLevelingProgress(40, 20)),
+            new DutySupportLevelingOptions(1, "profile.xml", MaxRuns: 1));
+
+        var queueTick = await activity.ExecuteStepAsync(TestContext.Current.CancellationToken);
+        var waitTick = await activity.ExecuteStepAsync(TestContext.Current.CancellationToken);
+        var entryTick = await activity.ExecuteStepAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(ExecutionDisposition.Continue, queueTick.Disposition);
+        Assert.Equal(ExecutionDisposition.Yield, waitTick.Disposition);
+        Assert.Equal(ExecutionDisposition.Yield, entryTick.Disposition);
+        Assert.Equal(1, duty.EnterCalls);
+        Assert.Equal(1, duty.AdvanceCalls);
+        Assert.Equal(1, orderBot.LoadCalls);
+    }
+
+    [Fact]
     public async Task OneRunGoalCompletesAfterProfileAndDutyExit()
     {
         var duty = new FakeDutyAdapter();
@@ -50,9 +74,11 @@ public sealed class DutySupportLevelingActivityTests
 
         var first = await activity.ExecuteStepAsync(TestContext.Current.CancellationToken);
         var second = await activity.ExecuteStepAsync(TestContext.Current.CancellationToken);
+        var third = await activity.ExecuteStepAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(ExecutionDisposition.Yield, first.Disposition);
-        Assert.Equal(ExecutionDisposition.Complete, second.Disposition);
+        Assert.Equal(ExecutionDisposition.Continue, first.Disposition);
+        Assert.Equal(ExecutionDisposition.Yield, second.Disposition);
+        Assert.Equal(ExecutionDisposition.Complete, third.Disposition);
         Assert.Equal(1, activity.CompletedRuns);
         Assert.Equal(1, duty.EnterCalls);
         Assert.Equal(1, orderBot.LoadCalls);
@@ -74,9 +100,13 @@ public sealed class DutySupportLevelingActivityTests
         public DutyLevelingProgress Read() => progress;
     }
 
-    private sealed class FakeDutyAdapter : IDutySupportAdapter
+    private sealed class FakeDutyAdapter(bool stayQueuedBeforeEntry = false) : IDutySupportAdapter
     {
+        private bool _entered;
+        private bool _profilePhaseObserved;
+
         public int EnterCalls { get; private set; }
+        public int AdvanceCalls { get; private set; }
         public string Key => "fake-duty";
         public string DisplayName => "Fake Duty";
 
@@ -84,11 +114,36 @@ public sealed class DutySupportLevelingActivityTests
             => Task.FromResult(new AdapterStatus(Key, DisplayName, AdapterHealth.Ready, "Ready", DateTimeOffset.UtcNow));
 
         public Task<DutyAutomationStatus> GetDutyStatusAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(new DutyAutomationStatus("None", false, false, false, false));
+        {
+            if (!_entered)
+            {
+                return Task.FromResult(new DutyAutomationStatus("None", false, false, false, false));
+            }
+
+            if (stayQueuedBeforeEntry && AdvanceCalls == 0)
+            {
+                return Task.FromResult(new DutyAutomationStatus("InQueue", true, false, false, false));
+            }
+
+            if (!_profilePhaseObserved)
+            {
+                _profilePhaseObserved = true;
+                return Task.FromResult(new DutyAutomationStatus("InDungeon", false, false, false, true));
+            }
+
+            return Task.FromResult(new DutyAutomationStatus("None", false, false, false, false));
+        }
 
         public Task<bool> EnterAsync(DutyAutomationRequest request, CancellationToken cancellationToken = default)
         {
             EnterCalls++;
+            _entered = true;
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> AdvanceEntryAsync(CancellationToken cancellationToken = default)
+        {
+            AdvanceCalls++;
             return Task.FromResult(true);
         }
     }
