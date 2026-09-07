@@ -1,5 +1,6 @@
 using System.Windows;
 using EZBuddy.Core.Licensing;
+using EZBuddy.Core.Notifications;
 using EZBuddy.Core.Runtime;
 using EZBuddy.RebornBuddy.Adapters;
 using EZBuddy.RebornBuddy.Licensing;
@@ -14,6 +15,8 @@ public sealed class EZBuddyPlugin : BotPlugin
     private MainWindow? _window;
     private LicenseManager? _licenseManager;
     private HttpOnlineLicenseClient? _onlineLicenseClient;
+    private DiscordWebhookNotificationSink? _discordNotificationSink;
+    private NotificationActivityTelemetrySink? _notificationTelemetrySink;
 
     public override string Author => "EZ";
     public override string Name => "EZBuddy Suite";
@@ -26,8 +29,9 @@ public sealed class EZBuddyPlugin : BotPlugin
     {
         RegisterAdapters();
         InitializeLicensing();
+        InitializeNotifications();
         LicenseRuntime.LicenseRequired += OnLicenseRequired;
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin initialized. Shared runtime, adapters, and licensing registered.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin initialized. Shared runtime, adapters, licensing, and optional notifications registered.");
     }
 
     public override void OnEnabled()
@@ -37,6 +41,12 @@ public sealed class EZBuddyPlugin : BotPlugin
         {
             InitializeLicensing();
         }
+
+        if (_notificationTelemetrySink is null)
+        {
+            InitializeNotifications();
+        }
+
         ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin enabled.");
     }
 
@@ -51,9 +61,18 @@ public sealed class EZBuddyPlugin : BotPlugin
         LicenseRuntime.LicenseRequired -= OnLicenseRequired;
         CloseDashboard();
         EZBuddyRuntime.Queue.Pause();
+
+        if (_notificationTelemetrySink is not null)
+        {
+            EZBuddyRuntime.Telemetry.Unregister(_notificationTelemetrySink);
+            _notificationTelemetrySink = null;
+        }
+
+        _discordNotificationSink?.Dispose();
+        _discordNotificationSink = null;
         _onlineLicenseClient?.Dispose();
         _onlineLicenseClient = null;
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; activity engine paused.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; activity engine paused and optional integrations released.");
     }
 
     public override void OnButtonPress() => OpenDashboard(navigateToLicense: false);
@@ -85,6 +104,37 @@ public sealed class EZBuddyPlugin : BotPlugin
         catch (Exception ex)
         {
             ff14bot.Helpers.Logging.Write($"[EZBuddy Licensing] Initialization failed: {ex.Message}");
+        }
+    }
+
+    private void InitializeNotifications()
+    {
+        var webhookText = Environment.GetEnvironmentVariable("EZBUDDY_DISCORD_WEBHOOK");
+        if (string.IsNullOrWhiteSpace(webhookText))
+        {
+            return;
+        }
+
+        try
+        {
+            if (!Uri.TryCreate(webhookText, UriKind.Absolute, out var webhookUri))
+            {
+                ff14bot.Helpers.Logging.Write("[EZBuddy Notifications] Discord webhook configuration is invalid; notifications disabled.");
+                return;
+            }
+
+            _discordNotificationSink?.Dispose();
+            _discordNotificationSink = new DiscordWebhookNotificationSink(webhookUri);
+            _notificationTelemetrySink = new NotificationActivityTelemetrySink(_discordNotificationSink);
+            EZBuddyRuntime.Telemetry.Register(_notificationTelemetrySink);
+            ff14bot.Helpers.Logging.Write("[EZBuddy Notifications] Discord queue notifications enabled.");
+        }
+        catch (Exception exception)
+        {
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Notifications] Initialization failed without exposing the webhook endpoint: {exception.Message}");
+            _notificationTelemetrySink = null;
+            _discordNotificationSink?.Dispose();
+            _discordNotificationSink = null;
         }
     }
 
