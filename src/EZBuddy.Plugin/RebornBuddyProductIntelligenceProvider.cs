@@ -7,6 +7,7 @@ using EZBuddy.Core.Product;
 using EZBuddy.Core.Runtime;
 using EZBuddy.Core.Settings;
 using EZBuddy.RebornBuddy.Adapters;
+using EZBuddy.RebornBuddy.Product;
 using EZBuddy.RebornBuddy.Settings;
 using EZBuddy.UI.ViewModels;
 using ff14bot.Managers;
@@ -135,10 +136,29 @@ public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenc
             "Product",
             characterKey + ".snapshot.json");
         var store = new JsonProductSnapshotStore(path);
-        var snapshot = await store.LoadAsync(cancellationToken).ConfigureAwait(true);
+
+        string? captureWarning = null;
+        ProductSnapshotBundle? snapshot = null;
+        if (characterAvailable)
+        {
+            try
+            {
+                var collector = ProductSnapshotRuntime.Collector ?? new RebornBuddyProductSnapshotCollector();
+                snapshot = await collector.CaptureAsync(cancellationToken).ConfigureAwait(true);
+                await store.SaveAsync(snapshot, cancellationToken).ConfigureAwait(true);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                captureWarning = $"Product Snapshot: live capture failed; using the last good saved snapshot if available — {exception.Message}";
+            }
+        }
+
+        snapshot ??= await store.LoadAsync(cancellationToken).ConfigureAwait(true);
         if (snapshot is null)
         {
-            return ["Product Snapshot: no saved snapshot is available yet; Smart Gear, currency-cap, collections, procurement, and materia analysis will activate after a snapshot is captured."];
+            return captureWarning is null
+                ? ["Product Snapshot: no saved snapshot is available yet; Smart Gear, currency-cap, collections, procurement, and materia analysis will activate after a snapshot is captured."]
+                : [captureWarning, "Product Snapshot: no last-good snapshot was available for fallback analysis."];
         }
 
         var jobKey = characterAvailable
@@ -160,6 +180,11 @@ public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenc
         }
 
         var output = new List<string>();
+        if (captureWarning is not null)
+        {
+            output.Add(captureWarning);
+        }
+
         var age = DateTimeOffset.UtcNow - snapshot.CapturedAtUtc;
         output.Add($"Product Snapshot: {snapshot.Gear.Count} gear row(s), {snapshot.Currencies.Count} currency row(s), {snapshot.Collections.Count} collection row(s); captured {FormatAge(age)} ago for {snapshot.CharacterKey}.");
 
