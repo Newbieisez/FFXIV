@@ -1,3 +1,4 @@
+using System.Reflection;
 using EZBuddy.Core.Collections;
 using EZBuddy.Core.Economy;
 using EZBuddy.Core.Gear;
@@ -13,6 +14,9 @@ namespace EZBuddy.RebornBuddy.Product;
 
 public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollector
 {
+    private const string LlamaLocalPlayerExtensionsType = "LlamaLibrary.Extensions.LocalPlayerExtensions";
+    private const string LlamaBagSlotExtensionsType = "LlamaLibrary.Extensions.BagSlotExtensions";
+
     public Task<ProductSnapshotBundle> CaptureAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -25,12 +29,13 @@ public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollec
         var jobKey = ff14bot.Core.Me.CurrentJob.ToString();
         var gear = CaptureCurrentJobGear(jobKey, cancellationToken);
         var ownedItems = CaptureOwnedInventory(cancellationToken);
+        var currencies = CaptureCurrencies();
 
         return Task.FromResult(new ProductSnapshotBundle(
             characterKey,
             DateTimeOffset.UtcNow,
             gear,
-            Array.Empty<CurrencySnapshot>(),
+            currencies,
             Array.Empty<CollectionItemSnapshot>(),
             Array.Empty<MateriaStock>(),
             ownedItems,
@@ -44,9 +49,13 @@ public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollec
     {
         var output = new List<GearItemSnapshot>();
         var equippedBag = InventoryManager.GetBagByInventoryBagId(InventoryBagId.EquippedItems);
+        var mainHand = equippedBag[EquipmentSlot.MainHand];
+        var offHand = equippedBag[EquipmentSlot.OffHand];
+        var mainHandCategory = mainHand.IsFilled ? mainHand.Item.EquipmentCatagory : (ItemUiCategory?)null;
+        var offHandCategory = offHand.IsFilled ? offHand.Item.EquipmentCatagory : (ItemUiCategory?)null;
 
-        AddEquipped(output, equippedBag[EquipmentSlot.MainHand], GearSlot.Weapon, jobKey);
-        AddEquipped(output, equippedBag[EquipmentSlot.OffHand], GearSlot.OffHand, jobKey);
+        AddEquipped(output, mainHand, GearSlot.Weapon, jobKey);
+        AddEquipped(output, offHand, GearSlot.OffHand, jobKey);
         AddEquipped(output, equippedBag[EquipmentSlot.Head], GearSlot.Head, jobKey);
         AddEquipped(output, equippedBag[EquipmentSlot.Body], GearSlot.Body, jobKey);
         AddEquipped(output, equippedBag[EquipmentSlot.Hands], GearSlot.Hands, jobKey);
@@ -66,7 +75,7 @@ public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollec
                 continue;
             }
 
-            var gearSlot = TryMapGearSlot(slot);
+            var gearSlot = TryMapGearSlot(slot, mainHandCategory, offHandCategory);
             if (!gearSlot.HasValue)
             {
                 continue;
@@ -99,6 +108,44 @@ public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollec
         }
 
         return owned;
+    }
+
+    private static IReadOnlyList<CurrencySnapshot> CaptureCurrencies()
+    {
+        if (!TryInvokeOptionalLlama(LlamaLocalPlayerExtensionsType, "GCSeals", [ff14bot.Core.Me], out var sealsValue) ||
+            !TryInvokeOptionalLlama(LlamaLocalPlayerExtensionsType, "MaxGCSeals", [ff14bot.Core.Me], out var maxValue))
+        {
+            return Array.Empty<CurrencySnapshot>();
+        }
+
+        try
+        {
+            var current = Convert.ToInt32(sealsValue);
+            var cap = Convert.ToInt32(maxValue);
+            if (cap <= 0 || current < 0 || current > cap)
+            {
+                return Array.Empty<CurrencySnapshot>();
+            }
+
+            var safetyBuffer = cap > 1
+                ? Math.Min(1000, Math.Max(1, cap / 10))
+                : 0;
+
+            return
+            [
+                new CurrencySnapshot(
+                    "gc-seals",
+                    "Grand Company Seals",
+                    current,
+                    cap,
+                    ProjectedIncoming: 0,
+                    SafetyBuffer: safetyBuffer)
+            ];
+        }
+        catch (Exception exception) when (exception is FormatException or InvalidCastException or OverflowException)
+        {
+            return Array.Empty<CurrencySnapshot>();
+        }
     }
 
     private static void AddEquipped(
@@ -137,13 +184,33 @@ public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollec
             IsEquipped: isEquipped,
             IsProtected: isEquipped,
             CanExpertDelivery: false,
-            CanDesynthesize: false,
+            CanDesynthesize: slot.CanDesynthesize,
             CanSell: false,
             IsUnique: false,
             IsHighQuality: slot.IsHighQuality,
-            MateriaCount: 0);
+            MateriaCount: TryGetMateriaCount(slot));
 
-    private static GearSlot? TryMapGearSlot(BagSlot slot)
+    private static int TryGetMateriaCount(BagSlot slot)
+    {
+        if (!TryInvokeOptionalLlama(LlamaBagSlotExtensionsType, "MateriaCount", [slot], out var value))
+        {
+            return 0;
+        }
+
+        try
+        {
+            return Math.Clamp(Convert.ToInt32(value), 0, 5);
+        }
+        catch (Exception exception) when (exception is FormatException or InvalidCastException or OverflowException)
+        {
+            return 0;
+        }
+    }
+
+    private static GearSlot? TryMapGearSlot(
+        BagSlot slot,
+        ItemUiCategory? mainHandCategory,
+        ItemUiCategory? offHandCategory)
     {
         var byBag = slot.BagId switch
         {
@@ -166,7 +233,8 @@ public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollec
             return byBag;
         }
 
-        return slot.Item.EquipmentCatagory switch
+        var category = slot.Item.EquipmentCatagory;
+        var standardSlot = category switch
         {
             ItemUiCategory.Head => GearSlot.Head,
             ItemUiCategory.Body => GearSlot.Body,
@@ -177,8 +245,100 @@ public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollec
             ItemUiCategory.Necklace => GearSlot.Necklace,
             ItemUiCategory.Bracelets => GearSlot.Bracelets,
             ItemUiCategory.Ring => GearSlot.Ring,
-            _ => null
+            _ => (GearSlot?)null
         };
+
+        if (standardSlot.HasValue)
+        {
+            return standardSlot;
+        }
+
+        if (mainHandCategory.HasValue && category == mainHandCategory.Value)
+        {
+            return GearSlot.Weapon;
+        }
+
+        if (offHandCategory.HasValue && category == offHandCategory.Value)
+        {
+            return GearSlot.OffHand;
+        }
+
+        return null;
+    }
+
+    private static bool TryInvokeOptionalLlama(
+        string typeName,
+        string methodName,
+        object?[] arguments,
+        out object? result)
+    {
+        result = null;
+        try
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var type = assembly.GetType(typeName, throwOnError: false, ignoreCase: false);
+                if (type is null)
+                {
+                    continue;
+                }
+
+                var method = type
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Where(candidate => string.Equals(candidate.Name, methodName, StringComparison.Ordinal))
+                    .FirstOrDefault(candidate => ParametersMatch(candidate.GetParameters(), arguments));
+                if (method is null)
+                {
+                    return false;
+                }
+
+                result = method.Invoke(null, arguments);
+                return true;
+            }
+        }
+        catch (TargetInvocationException)
+        {
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (MethodAccessException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool ParametersMatch(ParameterInfo[] parameters, object?[] arguments)
+    {
+        if (parameters.Length != arguments.Length)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < parameters.Length; index++)
+        {
+            var argument = arguments[index];
+            if (argument is null)
+            {
+                if (parameters[index].ParameterType.IsValueType && Nullable.GetUnderlyingType(parameters[index].ParameterType) is null)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (!parameters[index].ParameterType.IsInstanceOfType(argument))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool IsArmoryBag(InventoryBagId bagId)

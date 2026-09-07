@@ -76,4 +76,52 @@ public sealed class ProductSnapshotTests
 
         Assert.Null(await store.LoadAsync(cancellationToken));
     }
+
+    [Fact]
+    public void MergeLive_RefreshesVerifiedDomainsAndPreservesOfflineMetadata()
+    {
+        var previous = new ProductSnapshotBundle(
+            "TestCharacter",
+            DateTimeOffset.UtcNow.AddMinutes(-10),
+            Gear: [new GearItemSnapshot(1, "Old Body", GearSlot.Body, 700, ["PLD"], GearStorageLocation.Inventory)],
+            Currencies:
+            [
+                new CurrencySnapshot("gc-seals", "Grand Company Seals", 1000, 90000, SafetyBuffer: 1000),
+                new CurrencySnapshot("custom", "Imported Currency", 25, 100)
+            ],
+            Collections: [new CollectionItemSnapshot("mount", "Missing Mount", "Mount", false, CollectionSourceKind.Duty, true, 20)],
+            Materia:
+            [
+                new MateriaStock(50, "Crit Materia", "Crit", 10, 8, ReserveQuantity: 2),
+                new MateriaStock(51, "Det Materia", "Det", 10, 3)
+            ],
+            OwnedItems: new Dictionary<uint, int> { [50] = 8, [51] = 3 },
+            Recipes: [new ProcurementRecipe(100, 1, [new ProcurementIngredient(200, 2)])],
+            Sources: [new ProcurementSource(200, "gather", ProcurementAction.Gather, 100)]);
+
+        var live = new ProductSnapshotBundle(
+            "testcharacter",
+            DateTimeOffset.UtcNow,
+            Gear: [new GearItemSnapshot(2, "New Body", GearSlot.Body, 740, ["PLD"], GearStorageLocation.ArmoryChest)],
+            Currencies: [new CurrencySnapshot("gc-seals", "Grand Company Seals", 87500, 90000, SafetyBuffer: 1000)],
+            Collections: [],
+            Materia: [],
+            OwnedItems: new Dictionary<uint, int> { [50] = 5, [999] = 2 },
+            Recipes: [],
+            Sources: []);
+
+        var merged = ProductSnapshotMerger.MergeLive(live, previous);
+
+        Assert.Single(merged.Gear);
+        Assert.Equal((uint)2, merged.Gear[0].ItemId);
+        Assert.Equal(2, merged.Currencies.Count);
+        Assert.Equal(87500, merged.Currencies.Single(currency => currency.Key == "gc-seals").Current);
+        Assert.Equal(25, merged.Currencies.Single(currency => currency.Key == "custom").Current);
+        Assert.Single(merged.Collections);
+        Assert.Single(merged.Recipes);
+        Assert.Single(merged.Sources);
+        Assert.Equal(5, merged.Materia.Single(stock => stock.ItemId == 50).QuantityOwned);
+        Assert.Equal(0, merged.Materia.Single(stock => stock.ItemId == 51).QuantityOwned);
+        Assert.Equal(2, merged.OwnedItems[999]);
+    }
 }

@@ -2,8 +2,8 @@ namespace EZBuddy.Core.Product;
 
 /// <summary>
 /// Merges a conservative live capture with the last persisted product snapshot. Live capture is
-/// authoritative only for the domains it can verify directly (gear and current inventory counts).
-/// Richer offline/provider-fed domains are preserved until a verified live collector owns them.
+/// authoritative only for domains it can verify directly. Richer offline/provider-fed domains are
+/// preserved until a verified live collector owns them.
 /// </summary>
 public static class ProductSnapshotMerger
 {
@@ -28,12 +28,41 @@ public static class ProductSnapshotMerger
 
         return live with
         {
-            Currencies = previous.Currencies,
+            Currencies = MergeCurrencies(previous.Currencies, live.Currencies),
             Collections = previous.Collections,
-            Materia = previous.Materia,
+            Materia = RefreshMateriaQuantities(previous.Materia, live.OwnedItems),
             Recipes = previous.Recipes,
             Sources = previous.Sources,
             SchemaVersion = previous.SchemaVersion
         };
     }
+
+    private static IReadOnlyList<EZBuddy.Core.Economy.CurrencySnapshot> MergeCurrencies(
+        IReadOnlyList<EZBuddy.Core.Economy.CurrencySnapshot> previous,
+        IReadOnlyList<EZBuddy.Core.Economy.CurrencySnapshot> live)
+    {
+        if (live.Count == 0)
+        {
+            return previous;
+        }
+
+        var liveKeys = live
+            .Select(currency => currency.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return previous
+            .Where(currency => !liveKeys.Contains(currency.Key))
+            .Concat(live)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<EZBuddy.Core.Materia.MateriaStock> RefreshMateriaQuantities(
+        IReadOnlyList<EZBuddy.Core.Materia.MateriaStock> previous,
+        IReadOnlyDictionary<uint, int> liveOwnedItems)
+        => previous
+            .Select(stock => stock with
+            {
+                QuantityOwned = liveOwnedItems.GetValueOrDefault(stock.ItemId)
+            })
+            .ToArray();
 }
