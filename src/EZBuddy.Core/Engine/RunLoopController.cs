@@ -97,7 +97,7 @@ public sealed class RunLoopController : IRunLoopController
     public async Task<ExecutionResult> TickAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await ApplyPendingSignalsAsync(cancellationToken).ConfigureAwait(false);
+        await ApplyPendingSignalsAsync(cancellationToken).ConfigureAwait(true);
 
         if (!_queue.IsRunning)
         {
@@ -105,7 +105,7 @@ public sealed class RunLoopController : IRunLoopController
             return ExecutionResult.Yield(Status.Message);
         }
 
-        var result = await _queue.TickAsync(cancellationToken).ConfigureAwait(false);
+        var result = await _queue.TickAsync(cancellationToken).ConfigureAwait(true);
         ObserveEngineState();
         return result;
     }
@@ -164,7 +164,7 @@ public sealed class RunLoopController : IRunLoopController
                     {
                         await _queue.StopAsync(
                             preservePendingQueue: true,
-                            cancellationToken: cancellationToken).ConfigureAwait(false);
+                            cancellationToken: cancellationToken).ConfigureAwait(true);
                         SetStatus(RunLoopState.Idle, "EZBuddy run loop stopped.");
                     }
                     else
