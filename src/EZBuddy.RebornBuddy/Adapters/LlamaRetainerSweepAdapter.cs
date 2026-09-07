@@ -32,7 +32,7 @@ public sealed class LlamaRetainerSweepAdapter : IRetainerSweepAdapter
                 version);
         }
 
-        var fallbackStatus = await _fallback.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+        var fallbackStatus = await _fallback.GetStatusAsync(cancellationToken);
         return fallbackStatus.Health is AdapterHealth.Ready or AdapterHealth.Busy
             ? fallbackStatus with
             {
@@ -59,7 +59,7 @@ public sealed class LlamaRetainerSweepAdapter : IRetainerSweepAdapter
                 var result = method.Invoke(null, null);
                 if (result is Task task)
                 {
-                    await task.WaitAsync(SweepTimeout, cancellationToken).ConfigureAwait(false);
+                    await task.WaitAsync(SweepTimeout, cancellationToken);
                     return true;
                 }
             }
@@ -77,7 +77,7 @@ public sealed class LlamaRetainerSweepAdapter : IRetainerSweepAdapter
             }
         }
 
-        return await _fallback.SweepCompletedVenturesAsync(cancellationToken).ConfigureAwait(false);
+        return await _fallback.SweepCompletedVenturesAsync(cancellationToken);
     }
 
     private static bool TryResolve(out MethodInfo method, out Version? version, out string failure)
