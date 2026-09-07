@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using EZBuddy.Core.Duties;
 using EZBuddy.Core.Licensing;
