@@ -113,13 +113,20 @@ public sealed record DutyNavigationProfile(
     int MaximumLevel,
     IReadOnlyList<DutyObjectiveNode> Objectives,
     IReadOnlyList<BossMechanicProfile> Bosses,
-    string? SourceLabel = null)
+    string? SourceLabel = null,
+    uint TerritoryId = 0)
 {
+    // DutyId remains the serialized legacy name for compatibility. It means the
+    // queue-registration ID. TerritoryId is the separate in-instance map/zone ID.
+    public uint QueueDutyId => DutyId;
+    public bool HasTerritoryVerification => TerritoryId != 0;
+    public bool IsRunnable => HasTerritoryVerification && Objectives.Count > 0;
+
     public void Validate()
     {
-        if (DutyId == 0)
+        if (QueueDutyId == 0)
         {
-            throw new InvalidDataException("Duty navigation profiles require a non-zero duty ID.");
+            throw new InvalidDataException("Duty navigation profiles require a non-zero queue registration ID.");
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(Name);
@@ -198,7 +205,7 @@ public interface IDutyPostRunAdapter
 public interface IDutyNavigationProfileCatalog
 {
     IReadOnlyCollection<DutyNavigationProfile> All { get; }
-    bool TryGet(uint dutyId, out DutyNavigationProfile? profile);
+    bool TryGet(uint queueDutyId, out DutyNavigationProfile? profile);
 }
 
 public sealed class DutyNavigationProfileCatalog : IDutyNavigationProfileCatalog
@@ -213,11 +220,11 @@ public sealed class DutyNavigationProfileCatalog : IDutyNavigationProfileCatalog
             profile.Validate();
         }
 
-        _profiles = list.ToDictionary(profile => profile.DutyId);
+        _profiles = list.ToDictionary(profile => profile.QueueDutyId);
     }
 
     public IReadOnlyCollection<DutyNavigationProfile> All => _profiles.Values.ToArray();
 
-    public bool TryGet(uint dutyId, out DutyNavigationProfile? profile)
-        => _profiles.TryGetValue(dutyId, out profile);
+    public bool TryGet(uint queueDutyId, out DutyNavigationProfile? profile)
+        => _profiles.TryGetValue(queueDutyId, out profile);
 }
