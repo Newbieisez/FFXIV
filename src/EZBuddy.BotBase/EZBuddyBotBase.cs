@@ -28,7 +28,7 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
             previous.Dispose();
         }
 
-        EZBuddyRuntime.Queue.Start();
+        _ = EZBuddyRuntime.RunLoop.StartAsync();
         ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase started with a new execution cancellation scope.");
     }
 
@@ -43,6 +43,7 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         var cancellation = Interlocked.Exchange(ref _runCancellation, null);
         cancellation?.Cancel();
 
+        EZBuddyRuntime.RunLoop.NotifyHostStopRequested();
         EZBuddyRuntime.Queue.Pause();
         _ = StopQueueAsync(cancellation);
         ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase stop requested. Active activity cancellation propagated; pending queue preserved.");
@@ -58,9 +59,21 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         }
 
         var token = cancellation.Token;
+        var runLoop = EZBuddyRuntime.RunLoop;
         var queue = EZBuddyRuntime.Queue;
+
+        try
+        {
+            await runLoop.ApplyPendingSignalsAsync(token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return false;
+        }
+
         if (!queue.IsRunning)
         {
+            runLoop.ObserveEngineState();
             await Coroutine.Yield();
             return false;
         }
@@ -70,6 +83,7 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         {
             ff14bot.Helpers.Logging.Write($"[EZBuddy Combat Guard] {diagnostic}");
             queue.Pause();
+            runLoop.ObserveEngineState();
             await Coroutine.Yield();
             return false;
         }
@@ -77,6 +91,8 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         try
         {
             var result = await queue.TickAsync(token).ConfigureAwait(true);
+            runLoop.ObserveEngineState();
+
             if (result.RetryAfter is { } retryAfter && retryAfter > TimeSpan.Zero)
             {
                 await Task.Delay(retryAfter, token).ConfigureAwait(true);
@@ -108,6 +124,7 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         }
         finally
         {
+            EZBuddyRuntime.RunLoop.NotifyHostStopped();
             cancellation?.Dispose();
         }
     }
