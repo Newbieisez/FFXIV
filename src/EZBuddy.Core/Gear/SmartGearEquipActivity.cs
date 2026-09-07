@@ -30,6 +30,12 @@ public static class SmartGearEquipPlanner
 
         var instructions = new List<GearEquipInstruction>();
         var warnings = new List<string>();
+        var bestEquippedScoreBySlot = gearPlan.Recommendations
+            .Where(recommendation => recommendation.Item.IsEquipped)
+            .GroupBy(recommendation => recommendation.Item.Slot)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Max(recommendation => recommendation.Score));
 
         foreach (var recommendation in gearPlan.Recommendations
                      .Where(recommendation => recommendation.Disposition == GearDisposition.EquipBest)
@@ -47,6 +53,14 @@ public static class SmartGearEquipPlanner
             {
                 warnings.Add(
                     $"Ring upgrade '{item.Name}' was not queued automatically because ring placement requires choosing Ring1 vs Ring2 safely.");
+                continue;
+            }
+
+            if (bestEquippedScoreBySlot.TryGetValue(item.Slot, out var equippedScore) &&
+                recommendation.Score <= equippedScore)
+            {
+                warnings.Add(
+                    $"'{item.Name}' was not queued because it does not improve the current equipped {item.Slot} score.");
                 continue;
             }
 
