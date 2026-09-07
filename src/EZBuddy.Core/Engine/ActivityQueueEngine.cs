@@ -205,7 +205,7 @@ public sealed class ActivityQueueEngine
             return ExecutionResult.Block("Activity engine is emergency-stopped.");
         }
 
-        if (!await _tickGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        if (!await _tickGate.WaitAsync(0, cancellationToken).ConfigureAwait(true))
         {
             return ExecutionResult.Yield("Previous activity step is still running.");
         }
@@ -223,17 +223,17 @@ public sealed class ActivityQueueEngine
 
             if (!_executionGate.CanExecute(current.Item.Activity.Category, out var licenseMessage))
             {
-                await SafeHaltAsync(current, CancellationToken.None).ConfigureAwait(false);
-                await SetStateAsync(current, ActivityState.Blocked, $"License blocked execution: {licenseMessage}", CancellationToken.None).ConfigureAwait(false);
+                await SafeHaltAsync(current, CancellationToken.None).ConfigureAwait(true);
+                await SetStateAsync(current, ActivityState.Blocked, $"License blocked execution: {licenseMessage}", CancellationToken.None).ConfigureAwait(true);
                 IsPaused = true;
                 return ExecutionResult.Block(licenseMessage);
             }
 
             if (_gentleStopRequested)
             {
-                await SetStateAsync(current, ActivityState.GentleStopping, "Gentle stop requested; halting at safe boundary.", token).ConfigureAwait(false);
-                await SafeHaltAsync(current, token).ConfigureAwait(false);
-                await SetStateAsync(current, ActivityState.Cancelled, "Stopped gently.", token).ConfigureAwait(false);
+                await SetStateAsync(current, ActivityState.GentleStopping, "Gentle stop requested; halting at safe boundary.", token).ConfigureAwait(true);
+                await SafeHaltAsync(current, token).ConfigureAwait(true);
+                await SetStateAsync(current, ActivityState.Cancelled, "Stopped gently.", token).ConfigureAwait(true);
                 _current = null;
                 _gentleStopRequested = false;
                 IsPaused = true;
@@ -242,15 +242,15 @@ public sealed class ActivityQueueEngine
 
             if (current.Item.Activity.IsComplete)
             {
-                await CompleteCurrentAsync(current, "Activity reported complete.", token).ConfigureAwait(false);
+                await CompleteCurrentAsync(current, "Activity reported complete.", token).ConfigureAwait(true);
                 return ExecutionResult.Complete("Activity complete.");
             }
 
             try
             {
-                if (!await current.Item.Activity.CanExecuteAsync(token).ConfigureAwait(false))
+                if (!await current.Item.Activity.CanExecuteAsync(token).ConfigureAwait(true))
                 {
-                    await SetStateAsync(current, ActivityState.Waiting, "Preconditions are not currently satisfied.", token).ConfigureAwait(false);
+                    await SetStateAsync(current, ActivityState.Waiting, "Preconditions are not currently satisfied.", token).ConfigureAwait(true);
                     return ExecutionResult.Yield("Waiting for activity preconditions.");
                 }
 
@@ -259,37 +259,37 @@ public sealed class ActivityQueueEngine
                     current.StartedAt = DateTimeOffset.UtcNow;
                 }
 
-                await SetStateAsync(current, ActivityState.Running, "Executing.", token).ConfigureAwait(false);
-                var result = await current.Item.Activity.ExecuteStepAsync(token).ConfigureAwait(false);
+                await SetStateAsync(current, ActivityState.Running, "Executing.", token).ConfigureAwait(true);
+                var result = await current.Item.Activity.ExecuteStepAsync(token).ConfigureAwait(true);
 
                 switch (result.Disposition)
                 {
                     case ExecutionDisposition.Complete:
-                        await CompleteCurrentAsync(current, result.Message, token).ConfigureAwait(false);
+                        await CompleteCurrentAsync(current, result.Message, token).ConfigureAwait(true);
                         break;
 
                     case ExecutionDisposition.Fail:
-                        await HandleFailureAsync(current, result, token).ConfigureAwait(false);
+                        await HandleFailureAsync(current, result, token).ConfigureAwait(true);
                         break;
 
                     case ExecutionDisposition.Block:
-                        await SetStateAsync(current, ActivityState.Blocked, result.Message, token).ConfigureAwait(false);
+                        await SetStateAsync(current, ActivityState.Blocked, result.Message, token).ConfigureAwait(true);
                         break;
 
                     case ExecutionDisposition.Retry:
                         current.Attempts++;
                         if (current.Attempts > current.Item.MaxRetries)
                         {
-                            await HandleFailureAsync(current, ExecutionResult.Fail($"Retry limit exceeded. Last message: {result.Message}"), token).ConfigureAwait(false);
+                            await HandleFailureAsync(current, ExecutionResult.Fail($"Retry limit exceeded. Last message: {result.Message}"), token).ConfigureAwait(true);
                         }
                         else
                         {
-                            await SetStateAsync(current, ActivityState.Waiting, result.Message, token).ConfigureAwait(false);
+                            await SetStateAsync(current, ActivityState.Waiting, result.Message, token).ConfigureAwait(true);
                         }
                         break;
 
                     default:
-                        await SetStateAsync(current, ActivityState.Running, result.Message, token).ConfigureAwait(false);
+                        await SetStateAsync(current, ActivityState.Running, result.Message, token).ConfigureAwait(true);
                         break;
                 }
 
@@ -297,15 +297,15 @@ public sealed class ActivityQueueEngine
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
-                await SafeHaltAsync(current, CancellationToken.None).ConfigureAwait(false);
-                await SetStateAsync(current, ActivityState.Cancelled, "Execution cancelled.", CancellationToken.None).ConfigureAwait(false);
+                await SafeHaltAsync(current, CancellationToken.None).ConfigureAwait(true);
+                await SetStateAsync(current, ActivityState.Cancelled, "Execution cancelled.", CancellationToken.None).ConfigureAwait(true);
                 _current = null;
                 return ExecutionResult.Fail("Execution cancelled.");
             }
             catch (Exception exception)
             {
                 var result = ExecutionResult.Fail("Unhandled activity exception.", exception);
-                await HandleFailureAsync(current, result, token).ConfigureAwait(false);
+                await HandleFailureAsync(current, result, token).ConfigureAwait(true);
                 return result;
             }
         }
@@ -338,15 +338,15 @@ public sealed class ActivityQueueEngine
     private async Task CompleteCurrentAsync(QueuedActivity current, string message, CancellationToken cancellationToken)
     {
         current.CompletedAt = DateTimeOffset.UtcNow;
-        await SetStateAsync(current, ActivityState.Completed, message, cancellationToken).ConfigureAwait(false);
+        await SetStateAsync(current, ActivityState.Completed, message, cancellationToken).ConfigureAwait(true);
         _current = null;
     }
 
     private async Task HandleFailureAsync(QueuedActivity current, ExecutionResult result, CancellationToken cancellationToken)
     {
         current.CompletedAt = DateTimeOffset.UtcNow;
-        await SetStateAsync(current, ActivityState.Failed, result.Message, cancellationToken).ConfigureAwait(false);
-        await SafeHaltAsync(current, cancellationToken).ConfigureAwait(false);
+        await SetStateAsync(current, ActivityState.Failed, result.Message, cancellationToken).ConfigureAwait(true);
+        await SafeHaltAsync(current, cancellationToken).ConfigureAwait(true);
 
         if (current.Item.ContinueOnFailure)
         {
@@ -361,7 +361,7 @@ public sealed class ActivityQueueEngine
     {
         try
         {
-            await current.Item.Activity.OnHaltAsync(cancellationToken).ConfigureAwait(false);
+            await current.Item.Activity.OnHaltAsync(cancellationToken).ConfigureAwait(true);
         }
         catch
         {
@@ -373,7 +373,7 @@ public sealed class ActivityQueueEngine
     {
         var snapshot = current.ToSnapshot(state, message);
         _snapshots[current.Item.Activity.Id] = snapshot;
-        await _telemetry.PublishAsync(snapshot, cancellationToken).ConfigureAwait(false);
+        await _telemetry.PublishAsync(snapshot, cancellationToken).ConfigureAwait(true);
     }
 
     private sealed class QueuedActivity
