@@ -47,14 +47,14 @@ public sealed class RoutineCompletionActivity : IEZActivity
 
         if (_inner.IsComplete)
         {
-            await RecordCompletionAsync("Completed", cancellationToken).ConfigureAwait(false);
+            await RecordCompletionAsync("Completed", cancellationToken);
             return ExecutionResult.Complete($"{Name} completed and routine history was recorded.");
         }
 
-        var result = await _inner.ExecuteStepAsync(cancellationToken).ConfigureAwait(false);
+        var result = await _inner.ExecuteStepAsync(cancellationToken);
         if (result.Disposition == ExecutionDisposition.Complete || _inner.IsComplete)
         {
-            await RecordCompletionAsync("Completed", cancellationToken).ConfigureAwait(false);
+            await RecordCompletionAsync("Completed", cancellationToken);
             return result.Disposition == ExecutionDisposition.Complete
                 ? result
                 : ExecutionResult.Complete(result.Message);
@@ -75,7 +75,7 @@ public sealed class RoutineCompletionActivity : IEZActivity
 
         await _store.RecordAsync(
             new RoutineCompletion(_routineKey, _utcNow().ToUniversalTime(), outcome),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         _completionRecorded = true;
     }
 }
