@@ -6,8 +6,18 @@ namespace EZBuddy.RebornBuddy.Routines;
 
 public sealed class RebornBuddyCustomDeliveryRoutineFactory : IRoutineActivityFactory
 {
-    private const string ClientsEnvironmentKey = "EZBUDDY_CUSTOM_DELIVERY_CLIENTS";
-    private const string CraftingClassEnvironmentKey = "EZBUDDY_CUSTOM_DELIVERY_CRAFTING_CLASS";
+    private readonly IReadOnlyCollection<string> _clientKeys;
+    private readonly string _craftingClassKey;
+
+    public RebornBuddyCustomDeliveryRoutineFactory(
+        IReadOnlyCollection<string> clientKeys,
+        string craftingClassKey)
+    {
+        _clientKeys = clientKeys ?? throw new ArgumentNullException(nameof(clientKeys));
+        _craftingClassKey = string.IsNullOrWhiteSpace(craftingClassKey)
+            ? throw new ArgumentException("Custom Deliveries crafting class is required.", nameof(craftingClassKey))
+            : craftingClassKey.Trim();
+    }
 
     public string RoutineKey => "custom-deliveries";
 
@@ -18,36 +28,19 @@ public sealed class RebornBuddyCustomDeliveryRoutineFactory : IRoutineActivityFa
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(routine);
 
-        var clients = ReadClientKeys();
-        if (clients.Count == 0)
+        var clients = _clientKeys
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Select(key => key.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (clients.Length == 0)
         {
             return Task.FromResult<IEZActivity?>(null);
         }
 
-        var craftingClass = Environment.GetEnvironmentVariable(CraftingClassEnvironmentKey)?.Trim();
-        if (string.IsNullOrWhiteSpace(craftingClass))
-        {
-            craftingClass = "Carpenter";
-        }
-
         IEZActivity activity = new CustomDeliveryExecutionActivity(
             new LlamaCustomDeliveryAdapter(),
-            new CustomDeliveryExecutionOptions(clients, craftingClass));
+            new CustomDeliveryExecutionOptions(clients, _craftingClassKey));
         return Task.FromResult<IEZActivity?>(activity);
-    }
-
-    public static IReadOnlyCollection<string> ReadClientKeys()
-    {
-        var value = Environment.GetEnvironmentVariable(ClientsEnvironmentKey);
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return Array.Empty<string>();
-        }
-
-        return value
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(key => !string.IsNullOrWhiteSpace(key))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
     }
 }
