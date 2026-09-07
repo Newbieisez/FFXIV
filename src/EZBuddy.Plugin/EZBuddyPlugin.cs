@@ -4,11 +4,13 @@ using EZBuddy.Core.Duties;
 using EZBuddy.Core.Licensing;
 using EZBuddy.Core.Notifications;
 using EZBuddy.Core.Runtime;
+using EZBuddy.Core.Safety;
 using EZBuddy.Core.Settings;
 using EZBuddy.RebornBuddy.Adapters;
 using EZBuddy.RebornBuddy.Bundles;
 using EZBuddy.RebornBuddy.Duties;
 using EZBuddy.RebornBuddy.Licensing;
+using EZBuddy.RebornBuddy.Safety;
 using EZBuddy.RebornBuddy.Settings;
 using EZBuddy.UI;
 using EZBuddy.UI.ViewModels;
@@ -25,6 +27,7 @@ public sealed class EZBuddyPlugin : BotPlugin
     private DiscordWebhookNotificationSink? _discordNotificationSink;
     private NotificationActivityTelemetrySink? _notificationTelemetrySink;
     private IRuntimeSessionPersistence? _runtimePersistence;
+    private RebornBuddyGamelogContactSource? _socialContactSource;
     private bool _firstPlayableLoopQueuedThisEnable;
 
     public override string Author => "EZ";
@@ -53,6 +56,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         ProductIntelligenceRuntime.Provider = new RebornBuddyProductIntelligenceProvider();
         _ = RebornBuddySettingsSession.GetOrCreate();
         InitializeRuntimePersistence();
+        InitializeSocialSafety();
 
         if (_licenseManager is null)
         {
@@ -77,9 +81,10 @@ public sealed class EZBuddyPlugin : BotPlugin
     {
         _firstPlayableLoopQueuedThisEnable = false;
         CloseDashboard();
+        CloseSocialSafety();
         CloseRuntimePersistence(markClean: true);
         _ = RebornBuddySettingsSession.FlushPendingSavesAsync();
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin disabled. Runtime checkpoint marked clean; pending settings flush requested.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin disabled. Runtime checkpoint marked clean; social monitor released; pending settings flush requested.");
     }
 
     public override void OnShutdown()
@@ -88,6 +93,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         DutyRouteRecorderRuntime.Configure(null);
         ProductIntelligenceRuntime.Provider = null;
         CloseDashboard();
+        CloseSocialSafety();
         EZBuddyRuntime.Queue.Pause();
         CloseRuntimePersistence(markClean: true);
 
@@ -115,7 +121,7 @@ public sealed class EZBuddyPlugin : BotPlugin
 
         _onlineLicenseClient?.Dispose();
         _onlineLicenseClient = null;
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; queue paused, settings flushed, runtime checkpoint closed, route recorder/Product Intelligence released, and optional integrations released.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; queue paused, settings flushed, runtime checkpoint closed, social monitor/route recorder/Product Intelligence released, and optional integrations released.");
     }
 
     public override void OnButtonPress() => OpenDashboard(navigateToLicense: false);
@@ -200,6 +206,38 @@ public sealed class EZBuddyPlugin : BotPlugin
                 _discordNotificationSink = null;
             }
         }
+    }
+
+    private void InitializeSocialSafety()
+    {
+        CloseSocialSafety();
+        try
+        {
+            _socialContactSource = new RebornBuddyGamelogContactSource();
+            SocialSafetyRuntime.Monitor = new SocialSafetyMonitor(
+                _socialContactSource,
+                EZBuddyRuntime.RunLoop,
+                EZBuddyRuntime.Notifications,
+                new SocialSafetyPolicy(
+                    PauseOnDirectTell: true,
+                    PauseOnGmCommunication: true,
+                    PauseOnRepeatedTradeRequests: false));
+            ff14bot.Helpers.Logging.Write("[EZBuddy Social Safety] Passive incoming tell/GM monitoring enabled. Private message contents are not forwarded to notifications.");
+        }
+        catch (Exception exception)
+        {
+            SocialSafetyRuntime.Monitor = null;
+            _socialContactSource?.Dispose();
+            _socialContactSource = null;
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Social Safety] Monitor initialization failed closed: {exception.Message}");
+        }
+    }
+
+    private void CloseSocialSafety()
+    {
+        SocialSafetyRuntime.Monitor = null;
+        _socialContactSource?.Dispose();
+        _socialContactSource = null;
     }
 
     private void InitializeRuntimePersistence()
