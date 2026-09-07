@@ -3,6 +3,7 @@ using EZBuddy.Core.Duties;
 using EZBuddy.Core.Licensing;
 using EZBuddy.Core.Notifications;
 using EZBuddy.Core.Runtime;
+using EZBuddy.Core.Settings;
 using EZBuddy.RebornBuddy.Adapters;
 using EZBuddy.RebornBuddy.Bundles;
 using EZBuddy.RebornBuddy.Duties;
@@ -22,6 +23,7 @@ public sealed class EZBuddyPlugin : BotPlugin
     private HttpOnlineLicenseClient? _onlineLicenseClient;
     private DiscordWebhookNotificationSink? _discordNotificationSink;
     private NotificationActivityTelemetrySink? _notificationTelemetrySink;
+    private IRuntimeSessionPersistence? _runtimePersistence;
     private bool _firstPlayableLoopQueuedThisEnable;
 
     public override string Author => "EZ";
@@ -49,6 +51,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         DutyRouteRecorderRuntime.Configure(new RebornBuddyDutyRouteRecorderController());
         ProductIntelligenceRuntime.Provider = new RebornBuddyProductIntelligenceProvider();
         _ = RebornBuddySettingsSession.GetOrCreate();
+        InitializeRuntimePersistence();
 
         if (_licenseManager is null)
         {
@@ -73,8 +76,9 @@ public sealed class EZBuddyPlugin : BotPlugin
     {
         _firstPlayableLoopQueuedThisEnable = false;
         CloseDashboard();
+        CloseRuntimePersistence(markClean: true);
         _ = RebornBuddySettingsSession.FlushPendingSavesAsync();
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin disabled. BotBase execution is not forcibly stopped; pending settings flush requested.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin disabled. Runtime checkpoint marked clean; pending settings flush requested.");
     }
 
     public override void OnShutdown()
@@ -84,6 +88,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         ProductIntelligenceRuntime.Provider = null;
         CloseDashboard();
         EZBuddyRuntime.Queue.Pause();
+        CloseRuntimePersistence(markClean: true);
 
         try
         {
@@ -104,7 +109,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         _discordNotificationSink = null;
         _onlineLicenseClient?.Dispose();
         _onlineLicenseClient = null;
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; activity engine paused, settings flushed, route recorder/Product Intelligence released, and optional integrations released.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; queue paused, settings flushed, runtime checkpoint closed, route recorder/Product Intelligence released, and optional integrations released.");
     }
 
     public override void OnButtonPress() => OpenDashboard(navigateToLicense: false);
@@ -167,6 +172,52 @@ public sealed class EZBuddyPlugin : BotPlugin
             _notificationTelemetrySink = null;
             _discordNotificationSink?.Dispose();
             _discordNotificationSink = null;
+        }
+    }
+
+    private void InitializeRuntimePersistence()
+    {
+        CloseRuntimePersistence(markClean: false);
+        try
+        {
+            var characterKey = SettingsPathSanitizer.Sanitize(ff14bot.Core.Player?.Name ?? "default");
+            var root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Settings", "EZBuddy", "Runtime");
+            var checkpoint = new JsonResumeCheckpointStore(Path.Combine(root, characterKey + ".resume.json"));
+            var replay = new JsonLinesDecisionReplayRecorder(Path.Combine(root, characterKey + ".decisions.jsonl"));
+            _runtimePersistence = new RuntimePersistenceTelemetrySink(checkpoint, replay);
+            EZBuddyRuntime.Telemetry.Register(_runtimePersistence);
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Runtime] Resume checkpoint and decision replay enabled for '{characterKey}'.");
+        }
+        catch (Exception exception)
+        {
+            _runtimePersistence = null;
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Runtime] Persistence initialization failed: {exception.Message}");
+        }
+    }
+
+    private void CloseRuntimePersistence(bool markClean)
+    {
+        var persistence = _runtimePersistence;
+        if (persistence is null)
+        {
+            return;
+        }
+
+        _runtimePersistence = null;
+        try
+        {
+            if (markClean)
+            {
+                persistence.MarkCleanShutdownAsync().GetAwaiter().GetResult();
+            }
+        }
+        catch (Exception exception)
+        {
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Runtime] Final checkpoint failed: {exception.Message}");
+        }
+        finally
+        {
+            EZBuddyRuntime.Telemetry.Unregister(persistence);
         }
     }
 
