@@ -19,14 +19,17 @@ public sealed class RoutineQueueOrchestrator
     private readonly IRoutinePlanner _planner;
     private readonly ActivityQueueEngine _queue;
     private readonly IReadOnlyDictionary<string, IRoutineActivityFactory> _factories;
+    private readonly IRoutineCompletionStore? _completionStore;
 
     public RoutineQueueOrchestrator(
         IRoutinePlanner planner,
         ActivityQueueEngine queue,
-        IEnumerable<IRoutineActivityFactory>? factories = null)
+        IEnumerable<IRoutineActivityFactory>? factories = null,
+        IRoutineCompletionStore? completionStore = null)
     {
         _planner = planner ?? throw new ArgumentNullException(nameof(planner));
         _queue = queue ?? throw new ArgumentNullException(nameof(queue));
+        _completionStore = completionStore;
         _factories = (factories ?? Array.Empty<IRoutineActivityFactory>())
             .GroupBy(factory => factory.RoutineKey, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
@@ -40,7 +43,7 @@ public sealed class RoutineQueueOrchestrator
     {
         ArgumentNullException.ThrowIfNull(routines);
         var routineList = routines.ToArray();
-        var dueStates = await _planner.GetDueAsync(routineList, nowUtc, cancellationToken).ConfigureAwait(false);
+        var dueStates = await _planner.GetDueAsync(routineList, nowUtc, cancellationToken);
 
         var queued = new List<string>();
         var skipped = new List<string>();
@@ -74,7 +77,7 @@ public sealed class RoutineQueueOrchestrator
                 continue;
             }
 
-            var activity = await factory.CreateAsync(routine, cancellationToken).ConfigureAwait(false);
+            var activity = await factory.CreateAsync(routine, cancellationToken);
             if (activity is null)
             {
                 skipped.Add(routine.Key);
@@ -82,8 +85,12 @@ public sealed class RoutineQueueOrchestrator
                 continue;
             }
 
+            IEZActivity queuedActivity = _completionStore is null
+                ? activity
+                : new RoutineCompletionActivity(routine.Key, activity, _completionStore);
+
             _queue.Enqueue(new ActivityQueueItem(
-                activity,
+                queuedActivity,
                 Priority: routine.Priority,
                 MaxRetries: 3,
                 ContinueOnFailure: true,
