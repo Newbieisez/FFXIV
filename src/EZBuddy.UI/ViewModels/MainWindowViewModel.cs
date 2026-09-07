@@ -35,7 +35,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private string _selectedWorkspace = "Dashboard";
     private bool _isLicenseWorkspace;
     private bool _isFirstLoopWorkspace;
-    private string _runLoopState = RunLoopState.Idle.ToString();
+    private string _runLoopState = EZBuddy.Core.Engine.RunLoopState.Idle.ToString();
     private string _runLoopStatus = "Run loop is idle.";
     private string _licenseStatusMessage = "License status has not been evaluated.";
     private string _licenseTier = "None";
@@ -61,6 +61,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         SelectModuleCommand = new RelayCommand(SelectModule);
         ToggleModuleCommand = new RelayCommand(ToggleModule);
+        StartCommand = new AsyncRelayCommand(() => _runLoopController.StartAsync());
         PauseCommand = new AsyncRelayCommand(() => _runLoopController.PauseAsync());
         GentleStopCommand = new AsyncRelayCommand(() => _runLoopController.StopAsync());
         ResumeCommand = new AsyncRelayCommand(() => _runLoopController.ResumeAsync());
@@ -92,6 +93,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public ICommand SelectModuleCommand { get; }
     public ICommand ToggleModuleCommand { get; }
+    public ICommand StartCommand { get; }
     public ICommand PauseCommand { get; }
     public ICommand GentleStopCommand { get; }
     public ICommand ResumeCommand { get; }
