@@ -1,7 +1,6 @@
 using EZBuddy.Core.Duties;
 using EZBuddy.Core.Engine;
 using EZBuddy.Core.Runtime;
-using ff14bot.Managers;
 
 namespace EZBuddy.RebornBuddy.Duties;
 
@@ -20,12 +19,6 @@ public sealed class RebornBuddyDutyRouteRecorderController : IDutyRouteRecorderC
             if (_activeRecorder is { IsComplete: false })
             {
                 return DutyRouteRecorderControlResult.Reject("A duty route recording is already active.");
-            }
-
-            if (WorldManager.ZoneId != request.TerritoryId)
-            {
-                return DutyRouteRecorderControlResult.Reject(
-                    $"Recorder territory mismatch. Current territory is {WorldManager.ZoneId}; configured territory is {request.TerritoryId}.");
             }
 
             var queue = EZBuddyRuntime.Queue;
@@ -58,7 +51,7 @@ public sealed class RebornBuddyDutyRouteRecorderController : IDutyRouteRecorderC
             queue.Start();
 
             return DutyRouteRecorderControlResult.Ok(
-                $"Recording '{request.Name}' in territory {request.TerritoryId}. Walk the route manually; use Capture Target for ambiguous interactables, then Stop & Save.");
+                $"Recording request queued for '{request.Name}' in territory {request.TerritoryId}. Territory is verified from the next BotBase tick; walk the route manually, use Capture Target for ambiguous interactables, then Stop & Save.");
         }
     }
 
