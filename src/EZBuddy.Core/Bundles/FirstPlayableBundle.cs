@@ -10,7 +10,8 @@ public sealed record FirstPlayableBundleOptions(
     bool RunDutyLoop = true,
     bool ReturnToIdle = true,
     int BasePriority = 100,
-    int MaxRetriesPerStage = 2);
+    int MaxRetriesPerStage = 2,
+    IReadOnlyList<IEZActivity>? BeforeProgressionActivities = null);
 
 public interface IFirstPlayableActivityFactory
 {
@@ -58,6 +59,11 @@ public sealed class FirstPlayableBundlePlanner
         if (options.RunInventoryPressureRelief)
         {
             activities.Add((_factory.CreateInventoryPressureReliefActivity(), "Inventory pressure relieved or safely blocked"));
+        }
+
+        foreach (var activity in options.BeforeProgressionActivities ?? Array.Empty<IEZActivity>())
+        {
+            activities.Add((activity, $"{activity.Name} routine complete"));
         }
 
         if (options.RunDailyProgression)
