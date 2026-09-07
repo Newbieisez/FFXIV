@@ -115,9 +115,9 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
             .Where(itemId => itemId > 0)
             .Distinct()
             .ToArray();
-        var gcDailyEnabled = RebornBuddyGrandCompanyExpertDeliveryRoutineFactory.IsEnabled();
-        var ventureRefillEnabled = RebornBuddyVentureTokenRefillRoutineFactory.IsEnabled();
-        var customDeliveryEnabled = RebornBuddyCustomDeliveryRoutineFactory.ReadClientKeys().Count > 0;
+        var gcDailyEnabled = settings.RunGrandCompanyExpertDeliveryDaily;
+        var ventureRefillEnabled = settings.RunVentureRefillDaily;
+        var customDeliveryEnabled = settings.RunCustomDeliveriesWeekly;
 
         var factories = new List<IRoutineActivityFactory>();
         if (gcDailyEnabled)
@@ -131,12 +131,16 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
             // destructive fallback list. This prevents two activities from independently
             // attempting the same Expert Delivery sequence in one run.
             factories.Add(new RebornBuddyVentureTokenRefillRoutineFactory(
-                gcDailyEnabled ? Array.Empty<uint>() : approvedItems));
+                gcDailyEnabled ? Array.Empty<uint>() : approvedItems,
+                settings.VentureMinimumQuantity,
+                settings.VentureTargetQuantity));
         }
 
         if (customDeliveryEnabled)
         {
-            factories.Add(new RebornBuddyCustomDeliveryRoutineFactory());
+            factories.Add(new RebornBuddyCustomDeliveryRoutineFactory(
+                settings.EffectiveCustomDeliveryClientKeys,
+                settings.CustomDeliveryCraftingClass));
         }
 
         if (factories.Count == 0)
