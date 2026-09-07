@@ -41,9 +41,9 @@ public static class ModuleCatalog
     public static IReadOnlyList<EZModuleDefinition> All { get; } =
     [
         new("dashboard", "Dashboard & Activity Queue", EZModuleDomain.Core, "Unified scheduling, queue orchestration, stop conditions, telemetry and diagnostics.", ModuleMaturity.InDevelopment),
-        new("product-intelligence", "Product Intelligence & Dry Run", EZModuleDomain.Core, "Live preflight, patch-compatibility warnings, dry-run simulation and goal planning without starting the queue.", ModuleMaturity.Foundation),
-        new("runtime-resume", "Crash Resume Checkpoints", EZModuleDomain.Safety, "Per-character activity checkpoints that distinguish clean shutdown from interrupted sessions for recovery planning.", ModuleMaturity.Foundation),
-        new("decision-replay", "Decision Replay / Black Box", EZModuleDomain.Safety, "Append-only decision and activity-state audit log for explaining what EZBuddy decided and why.", ModuleMaturity.Foundation),
+        new("product-intelligence", "Product Intelligence & Dry Run", EZModuleDomain.Core, "Live preflight, patch-compatibility warnings, dry-run simulation, product snapshots and goal planning without starting the queue.", ModuleMaturity.InDevelopment),
+        new("runtime-resume", "Crash Resume Checkpoints", EZModuleDomain.Safety, "Per-character activity checkpoints that distinguish clean shutdown from interrupted sessions for recovery planning.", ModuleMaturity.InDevelopment),
+        new("decision-replay", "Decision Replay / Black Box", EZModuleDomain.Safety, "Append-only decision and activity-state audit log for explaining what EZBuddy decided and why.", ModuleMaturity.InDevelopment),
         new("conflict-guard", "Diagnostics & Conflict Guard", EZModuleDomain.Safety, "Detect overlapping automation providers and pause unsafe ownership conflicts.", ModuleMaturity.InDevelopment),
         new("hooks", "Hooks & Integrations", EZModuleDomain.Core, "Allowlisted Magitek, Lisbeth, OrderBot and third-party adapter registry.", ModuleMaturity.InDevelopment),
 
@@ -58,16 +58,16 @@ public static class ModuleCatalog
 
         new("craft-gather", "Gathering & Crafting", EZModuleDomain.CraftGather, "Lisbeth-backed crafting, gathering, travel and material acquisition orchestration.", ModuleMaturity.Foundation, SupportsLisbeth: true),
         new("procurement", "Resource Procurement Planner", EZModuleDomain.CraftGather, "Recursive missing-material planning across owned inventory, recipes and approved craft/gather/vendor/currency sources.", ModuleMaturity.Foundation, SupportsLisbeth: true),
-        new("materia", "Materia Optimization", EZModuleDomain.CraftGather, "Melding and pentamelding plans with stat-cap priorities, importable stat targets and materia reserve floors.", ModuleMaturity.Planned, DestructiveActionsRequireExplicitOptIn: true),
+        new("materia", "Materia Optimization", EZModuleDomain.CraftGather, "Melding and pentamelding plans with stat-cap priorities, guaranteed/overmeld slot rules, inventory-aware reserves and importable stat targets.", ModuleMaturity.Foundation, DestructiveActionsRequireExplicitOptIn: true),
         new("smart-gear", "Smart Gear Manager", EZModuleDomain.Economy, "Job-aware owned-gear scoring and safe recommendations across equip, protect, keep, retainer, GC, desynthesis and sell candidate states.", ModuleMaturity.Foundation, DestructiveActionsRequireExplicitOptIn: true),
-        new("currency-cap", "Currency Cap Manager", EZModuleDomain.Economy, "Projected currency-cap protection with explicitly approved spend rules and reserve floors.", ModuleMaturity.Foundation, DestructiveActionsRequireExplicitOptIn: true),
+        new("currency-cap", "Currency Cap Manager", EZModuleDomain.Economy, "Projected currency-cap protection with explicitly approved spend rules, reserve floors and live GC Venture pressure relief.", ModuleMaturity.Foundation, DestructiveActionsRequireExplicitOptIn: true),
         new("inventory-maintenance", "Inventory Maintenance", EZModuleDomain.Economy, "Guarded repair, materia extraction and explicitly allowlisted desynthesis using configurable thresholds and protected-item rules.", ModuleMaturity.Foundation, DestructiveActionsRequireExplicitOptIn: true),
         new("desynthesis", "Mass Desynthesis", EZModuleDomain.Economy, "Rule-based desynthesis of explicitly approved overflow items with protected-item and value guardrails.", ModuleMaturity.Foundation, DestructiveActionsRequireExplicitOptIn: true),
         new("levequests", "Levequest Auto-Burners", EZModuleDomain.WeeklyDaily, "Near-cap allowance management for configured DoH/DoL turn-in routines and repeatable crafting workflows.", ModuleMaturity.Planned, SupportsLisbeth: true, SupportsOrderBot: true),
         new("doman-enclave", "Doman Enclave Reconstruction", EZModuleDomain.WeeklyDaily, "Weekly donation-budget planning and turn-ins using explicitly approved item rules.", ModuleMaturity.Planned, DestructiveActionsRequireExplicitOptIn: true),
 
-        new("retainers", "Retainers & Ventures", EZModuleDomain.Economy, "Venture collection/reassignment, venture plans, inventory/token safeguards, GC refill integration, local-bell preference, entrust, gil collection and shared bell coordination.", ModuleMaturity.InDevelopment, SupportsLisbeth: true, SupportsOrderBot: true, DestructiveActionsRequireExplicitOptIn: true),
-        new("marketboard", "Marketboard", EZModuleDomain.Economy, "Rule-based listing orchestration with price floors, spend/sell protections and retainer coordination.", ModuleMaturity.Planned, DestructiveActionsRequireExplicitOptIn: true),
+        new("retainers", "Retainers & Ventures", EZModuleDomain.Economy, "Venture collection/reassignment, venture plans, inventory/token safeguards, GC refill integration, seal-pressure protection, local-bell preference, entrust, gil collection and shared bell coordination.", ModuleMaturity.InDevelopment, SupportsLisbeth: true, SupportsOrderBot: true, DestructiveActionsRequireExplicitOptIn: true),
+        new("marketboard", "Marketboard", EZModuleDomain.Economy, "Explicit-sale-allowlist pricing and relist recommendations with price floors, fee-aware net floors, reserve quantities, undercut limits and maximum automatic price-drop guardrails.", ModuleMaturity.Foundation, DestructiveActionsRequireExplicitOptIn: true),
         new("voyages", "Airship & Submersible Voyages", EZModuleDomain.Economy, "FC workshop deployment routes, fuel/repair-kit inventory tracking and configurable voyage schedules.", ModuleMaturity.Planned, DestructiveActionsRequireExplicitOptIn: true),
 
         new("relics", "Relics & Long-Term Projects", EZModuleDomain.Progression, "Resume-aware relic and tool project orchestration across supported expansion chains.", ModuleMaturity.Foundation, RequiresMagitek: true, SupportsLisbeth: true, SupportsOrderBot: true),
@@ -83,9 +83,9 @@ public static class ModuleCatalog
 
         new("dailies", "Daily & Weekly Routines", EZModuleDomain.WeeklyDaily, "Reset-aware GC, tribe/allied society, custom-delivery, Wondrous Tails, Gold Saucer and other daily/weekly planning routed through activities, Lisbeth, OrderBot and adapters.", ModuleMaturity.InDevelopment, RequiresMagitek: true, SupportsLisbeth: true, SupportsOrderBot: true),
 
-        new("social-safety", "Social Safety Monitor", EZModuleDomain.Safety, "Pause and alert on configured tells, invites, trades, unexpected relocation or other user-selected social events; records an audit trail and requires user review.", ModuleMaturity.Foundation),
-        new("session-safety", "Session Safety & Break Scheduler", EZModuleDomain.Safety, "User-configured session limits, scheduled breaks, stuck detection and safe stopping for health/reliability; not designed to evade game enforcement.", ModuleMaturity.Planned),
-        new("notifications", "Webhook & Push Alerting", EZModuleDomain.Notifications, "Opt-in outbound notifications for configured drops, clears, stuck states, inventory halts, social alerts and engine failures with secret-safe Discord webhook support.", ModuleMaturity.Foundation)
+        new("social-safety", "Social Safety Monitor", EZModuleDomain.Safety, "Pause and alert on configured tells, invites, trades, unexpected relocation or other user-selected social events; records an audit trail and requires user review.", ModuleMaturity.InDevelopment),
+        new("session-safety", "Session Safety & Break Scheduler", EZModuleDomain.Safety, "User-configured session limits, scheduled breaks, stuck detection and safe stopping for health/reliability; not designed to evade game enforcement.", ModuleMaturity.InDevelopment),
+        new("notifications", "Webhook & Push Alerting", EZModuleDomain.Notifications, "Opt-in outbound notifications for configured drops, clears, stuck states, inventory halts, social alerts and engine failures with secret-safe Discord webhook support.", ModuleMaturity.InDevelopment)
     ];
 
     public static EZModuleDefinition? Find(string key)
