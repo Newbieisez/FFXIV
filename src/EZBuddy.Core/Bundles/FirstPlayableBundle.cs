@@ -5,8 +5,10 @@ namespace EZBuddy.Core.Bundles;
 public sealed record FirstPlayableBundleOptions(
     bool RunMaintenance = true,
     bool RunRetainerSweep = true,
+    bool RunInventoryPressureRelief = true,
     bool RunDailyProgression = true,
     bool RunDutyLoop = true,
+    bool ReturnToIdle = true,
     int BasePriority = 100,
     int MaxRetriesPerStage = 2);
 
@@ -14,6 +16,7 @@ public interface IFirstPlayableActivityFactory
 {
     IEZActivity CreateMaintenanceActivity();
     IEZActivity CreateRetainerSweepActivity();
+    IEZActivity CreateInventoryPressureReliefActivity();
     IEZActivity CreateDailyProgressionActivity();
     IEZActivity CreateDutyLoopActivity();
 }
@@ -46,17 +49,30 @@ public sealed class FirstPlayableBundlePlanner
         {
             activities.Add((_factory.CreateMaintenanceActivity(), "Maintenance guardrails satisfied"));
         }
+
         if (options.RunRetainerSweep)
         {
             activities.Add((_factory.CreateRetainerSweepActivity(), "Retainer sweep complete"));
         }
+
+        if (options.RunInventoryPressureRelief)
+        {
+            activities.Add((_factory.CreateInventoryPressureReliefActivity(), "Inventory pressure relieved or safely blocked"));
+        }
+
         if (options.RunDailyProgression)
         {
             activities.Add((_factory.CreateDailyProgressionActivity(), "Daily progression pass complete"));
         }
+
         if (options.RunDutyLoop)
         {
             activities.Add((_factory.CreateDutyLoopActivity(), "Configured duty goal reached"));
+        }
+
+        if (options.ReturnToIdle)
+        {
+            activities.Add((new IdleCompletionActivity(), "First playable loop returned to idle"));
         }
 
         var activityIds = new List<Guid>(activities.Count);
@@ -87,9 +103,39 @@ public sealed class FirstPlayableBundlePlanner
         {
             throw new InvalidOperationException($"Activity '{activity.Name}' has an empty ID.");
         }
+
         if (string.IsNullOrWhiteSpace(activity.Name))
         {
             throw new InvalidOperationException("First playable bundle contains an unnamed activity.");
         }
+    }
+}
+
+public sealed class IdleCompletionActivity : IEZActivity
+{
+    private bool _complete;
+
+    public Guid Id { get; } = Guid.NewGuid();
+    public string Name => "Return to Idle";
+    public ActivityCategory Category => ActivityCategory.Core;
+    public bool IsComplete => _complete;
+
+    public Task<bool> CanExecuteAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(true);
+    }
+
+    public Task<ExecutionResult> ExecuteStepAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _complete = true;
+        return Task.FromResult(ExecutionResult.Complete("Configured first playable loop is complete. EZBuddy has no remaining queued work and is returning to idle."));
+    }
+
+    public Task OnHaltAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
     }
 }
