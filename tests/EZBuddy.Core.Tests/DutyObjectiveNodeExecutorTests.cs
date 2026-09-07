@@ -53,19 +53,23 @@ public sealed class DutyObjectiveNodeExecutorTests
     }
 
     [Fact]
-    public async Task BossBoundary_HoldsRouteWhileCombatIsActive()
+    public async Task BossBoundary_WaitsForCombatThenCompletesAfterCombatEnds()
     {
-        var host = new FakeNodeHost(new DutyNodeHostSnapshot(100, new DutyPoint(0, 0, 0), 20, true));
+        var host = new FakeNodeHost(new DutyNodeHostSnapshot(100, new DutyPoint(0, 0, 0), 20, false));
         var executor = new DutyObjectiveNodeExecutor(host);
         var node = new DutyObjectiveNode("boss", DutyObjectiveKind.BossBoundary, new DutyPoint(0, 0, 0), 2f);
 
+        var waiting = await executor.ExecuteAsync(node, TestContext.Current.CancellationToken);
+        host.State = host.State with { InCombat = true };
         var active = await executor.ExecuteAsync(node, TestContext.Current.CancellationToken);
         host.State = host.State with { InCombat = false };
         var complete = await executor.ExecuteAsync(node, TestContext.Current.CancellationToken);
 
+        Assert.Equal(NodeExecutionResult.InProgress, waiting);
         Assert.Equal(NodeExecutionResult.InProgress, active);
         Assert.Equal(NodeExecutionResult.Completed, complete);
         Assert.Equal(0, host.MoveCalls);
+        Assert.Equal(1, host.StopCalls);
         Assert.Equal(0, host.InteractCalls);
     }
 
@@ -74,17 +78,7 @@ public sealed class DutyObjectiveNodeExecutorTests
     {
         var host = new FakeNodeHost(new DutyNodeHostSnapshot(100, new DutyPoint(0, 0, 0), 20, false));
         var executor = new DutyObjectiveNodeExecutor(host);
-        var profile = new DutyNavigationProfile(
-            4,
-            "Test",
-            15,
-            100,
-            [
-                new DutyObjectiveNode("one", DutyObjectiveKind.Waypoint, new DutyPoint(0, 0, 0), 1.5f),
-                new DutyObjectiveNode("two", DutyObjectiveKind.Waypoint, new DutyPoint(0, 0, 0), 1.5f)
-            ],
-            [],
-            TerritoryId: 100);
+        var profile = CreateTwoWaypointProfile(100);
         var runner = new DutyObjectiveRouteRunner(profile, executor);
 
         var first = await runner.TickAsync(TestContext.Current.CancellationToken);
@@ -94,6 +88,34 @@ public sealed class DutyObjectiveNodeExecutorTests
         Assert.Equal(NodeExecutionResult.Completed, second);
         Assert.True(runner.IsComplete);
     }
+
+    [Fact]
+    public async Task RouteRunner_FailsFatalBeforeMovementWhenTerritoryChanges()
+    {
+        var host = new FakeNodeHost(new DutyNodeHostSnapshot(999, new DutyPoint(0, 0, 0), 20, false));
+        var runner = new DutyObjectiveRouteRunner(
+            CreateTwoWaypointProfile(100),
+            new DutyObjectiveNodeExecutor(host));
+
+        var result = await runner.TickAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(NodeExecutionResult.FailedFatal, result);
+        Assert.Equal(0, host.MoveCalls);
+        Assert.Equal(0, host.StopCalls);
+    }
+
+    private static DutyNavigationProfile CreateTwoWaypointProfile(uint territoryId)
+        => new(
+            4,
+            "Test",
+            15,
+            100,
+            [
+                new DutyObjectiveNode("one", DutyObjectiveKind.Waypoint, new DutyPoint(0, 0, 0), 1.5f),
+                new DutyObjectiveNode("two", DutyObjectiveKind.Waypoint, new DutyPoint(0, 0, 0), 1.5f)
+            ],
+            [],
+            TerritoryId: territoryId);
 
     private sealed class FakeNodeHost(DutyNodeHostSnapshot state) : IDutyObjectiveNodeHost
     {
