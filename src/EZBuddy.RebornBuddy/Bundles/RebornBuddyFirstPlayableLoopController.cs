@@ -66,9 +66,12 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
             var configuration = BuildConfiguration(settings);
             var factory = new RebornBuddyFirstPlayableActivityFactory(configuration);
 
-            // Validate reset history and build opt-in weekly work before mutating the activity queue.
-            // A corrupt completion ledger therefore fails closed without leaving a partially queued loop.
-            var beforeProgressionActivities = await BuildBeforeProgressionActivitiesAsync(cancellationToken)
+            // Validate reset history and construct explicit opt-in routine work before mutating
+            // the activity queue. A corrupt ledger therefore fails closed without leaving a
+            // partially queued first loop.
+            var beforeProgressionActivities = await BuildBeforeProgressionActivitiesAsync(
+                    settings,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             var planner = new FirstPlayableBundlePlanner(queue, factory);
@@ -105,16 +108,46 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
     }
 
     private static async Task<IReadOnlyList<IEZActivity>> BuildBeforeProgressionActivitiesAsync(
+        FirstPlayableLoopSettings settings,
         CancellationToken cancellationToken)
     {
-        var selectedClients = RebornBuddyCustomDeliveryRoutineFactory.ReadClientKeys();
-        if (selectedClients.Count == 0)
+        var approvedItems = settings.EffectiveApprovedExpertDeliveryItemIds
+            .Where(itemId => itemId > 0)
+            .Distinct()
+            .ToArray();
+        var gcDailyEnabled = RebornBuddyGrandCompanyExpertDeliveryRoutineFactory.IsEnabled();
+        var ventureRefillEnabled = RebornBuddyVentureTokenRefillRoutineFactory.IsEnabled();
+        var customDeliveryEnabled = RebornBuddyCustomDeliveryRoutineFactory.ReadClientKeys().Count > 0;
+
+        var factories = new List<IRoutineActivityFactory>();
+        if (gcDailyEnabled)
+        {
+            factories.Add(new RebornBuddyGrandCompanyExpertDeliveryRoutineFactory(approvedItems));
+        }
+
+        if (ventureRefillEnabled)
+        {
+            // If the explicit GC daily pass is enabled, do not give Venture refill the same
+            // destructive fallback list. This prevents two activities from independently
+            // attempting the same Expert Delivery sequence in one run.
+            factories.Add(new RebornBuddyVentureTokenRefillRoutineFactory(
+                gcDailyEnabled ? Array.Empty<uint>() : approvedItems));
+        }
+
+        if (customDeliveryEnabled)
+        {
+            factories.Add(new RebornBuddyCustomDeliveryRoutineFactory());
+        }
+
+        if (factories.Count == 0)
         {
             return Array.Empty<IEZActivity>();
         }
 
-        var routine = EZRoutineCatalog.Find("custom-deliveries")
-            ?? throw new InvalidOperationException("Custom Deliveries routine definition is missing.");
+        var routines = factories
+            .Select(factory => EZRoutineCatalog.Find(factory.RoutineKey)
+                ?? throw new InvalidOperationException($"Routine definition '{factory.RoutineKey}' is missing."))
+            .ToArray();
 
         var characterKey = SettingsPathSanitizer.Sanitize(ff14bot.Core.Player?.Name ?? "default");
         var completionPath = Path.Combine(
@@ -126,22 +159,35 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
         var completionStore = new JsonRoutineCompletionStore(completionPath);
         var resetPlanner = new ResetAwareRoutinePlanner(completionStore);
         var nowUtc = DateTimeOffset.UtcNow;
+        var dueStates = await resetPlanner.GetDueAsync(routines, nowUtc, cancellationToken)
+            .ConfigureAwait(false);
+        var dueByKey = dueStates.ToDictionary(
+            state => state.Routine.Key,
+            StringComparer.OrdinalIgnoreCase);
 
-        var dueState = (await resetPlanner.GetDueAsync([routine], nowUtc, cancellationToken)
-            .ConfigureAwait(false)).Single();
-        if (!dueState.IsDue)
+        var output = new List<IEZActivity>();
+        foreach (var factory in factories)
         {
-            return Array.Empty<IEZActivity>();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!dueByKey.TryGetValue(factory.RoutineKey, out var dueState) || !dueState.IsDue)
+            {
+                continue;
+            }
+
+            var activity = await factory.CreateAsync(dueState.Routine, cancellationToken)
+                .ConfigureAwait(false);
+            if (activity is null)
+            {
+                continue;
+            }
+
+            output.Add(new RoutineCompletionActivity(
+                dueState.Routine.Key,
+                activity,
+                completionStore));
         }
 
-        var activityFactory = new RebornBuddyCustomDeliveryRoutineFactory();
-        var activity = await activityFactory.CreateAsync(routine, cancellationToken).ConfigureAwait(false);
-        if (activity is null)
-        {
-            return Array.Empty<IEZActivity>();
-        }
-
-        return [new RoutineCompletionActivity(routine.Key, activity, completionStore)];
+        return output;
     }
 
     private static FirstPlayableLoopConfiguration BuildConfiguration(FirstPlayableLoopSettings settings)
