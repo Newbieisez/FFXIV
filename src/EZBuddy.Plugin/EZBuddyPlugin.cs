@@ -1,8 +1,10 @@
 using System.Windows;
+using EZBuddy.Core.Bundles;
 using EZBuddy.Core.Licensing;
 using EZBuddy.Core.Notifications;
 using EZBuddy.Core.Runtime;
 using EZBuddy.RebornBuddy.Adapters;
+using EZBuddy.RebornBuddy.Bundles;
 using EZBuddy.RebornBuddy.Licensing;
 using EZBuddy.UI;
 using ff14bot.AClasses;
@@ -17,6 +19,7 @@ public sealed class EZBuddyPlugin : BotPlugin
     private HttpOnlineLicenseClient? _onlineLicenseClient;
     private DiscordWebhookNotificationSink? _discordNotificationSink;
     private NotificationActivityTelemetrySink? _notificationTelemetrySink;
+    private bool _firstPlayableLoopQueuedThisEnable;
 
     public override string Author => "EZ";
     public override string Name => "EZBuddy Suite";
@@ -47,11 +50,18 @@ public sealed class EZBuddyPlugin : BotPlugin
             InitializeNotifications();
         }
 
+        _firstPlayableLoopQueuedThisEnable = false;
+        if (ReadBooleanEnvironmentFlag("EZBUDDY_QUEUE_FIRST_LOOP_ON_ENABLE"))
+        {
+            QueueConfiguredFirstPlayableLoop();
+        }
+
         ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin enabled.");
     }
 
     public override void OnDisabled()
     {
+        _firstPlayableLoopQueuedThisEnable = false;
         CloseDashboard();
         ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin disabled. BotBase execution is not forcibly stopped.");
     }
@@ -138,6 +148,49 @@ public sealed class EZBuddyPlugin : BotPlugin
         }
     }
 
+    private void QueueConfiguredFirstPlayableLoop()
+    {
+        if (_firstPlayableLoopQueuedThisEnable)
+        {
+            return;
+        }
+
+        try
+        {
+            var status = LicenseRuntime.CurrentStatus;
+            if (status is null || !status.IsValid)
+            {
+                ff14bot.Helpers.Logging.Write($"[EZBuddy Loop] First playable loop was not queued because an active license is required: {status?.Message ?? "Licensing is not initialized."}");
+                OpenDashboard(navigateToLicense: true);
+                return;
+            }
+
+            var configuration = FirstPlayableLoopConfiguration.FromEnvironment();
+            var factory = new RebornBuddyFirstPlayableActivityFactory(configuration);
+            var planner = new FirstPlayableBundlePlanner(EZBuddyRuntime.Queue, factory);
+            var plan = planner.Enqueue(new FirstPlayableBundleOptions(
+                RunMaintenance: true,
+                RunRetainerSweep: true,
+                RunInventoryPressureRelief: true,
+                RunDailyProgression: true,
+                RunDutyLoop: true,
+                ReturnToIdle: true,
+                BasePriority: 10_000,
+                MaxRetriesPerStage: 2));
+
+            _firstPlayableLoopQueuedThisEnable = true;
+            EZBuddyRuntime.Queue.Start();
+
+            ff14bot.Helpers.Logging.Write(
+                $"[EZBuddy Loop] Queued first playable loop with {plan.StageNames.Count} stages: {string.Join(" -> ", plan.StageNames)}");
+        }
+        catch (Exception exception)
+        {
+            ff14bot.Helpers.Logging.Write(
+                $"[EZBuddy Loop] Configuration prevented the loop from being queued: {exception.Message}");
+        }
+    }
+
     private void OnLicenseRequired(object? sender, LicenseStatus? status)
     {
         ff14bot.Helpers.Logging.Write($"[EZBuddy Licensing] Execution blocked: {status?.Message ?? "License required."}");
@@ -172,6 +225,13 @@ public sealed class EZBuddyPlugin : BotPlugin
                 _window.Activate();
             }
         }));
+    }
+
+    private static bool ReadBooleanEnvironmentFlag(string key)
+    {
+        var value = Environment.GetEnvironmentVariable(key)?.Trim();
+        return string.Equals(value, "1", StringComparison.Ordinal) ||
+               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void RegisterAdapters()
