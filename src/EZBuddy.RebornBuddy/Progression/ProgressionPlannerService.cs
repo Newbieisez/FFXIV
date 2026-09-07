@@ -41,7 +41,7 @@ public sealed class ProgressionPlannerService
         foreach (var node in catalog)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            inspections.Add(await _scanner.InspectAsync(node, cancellationToken).ConfigureAwait(false));
+            inspections.Add(await _scanner.InspectAsync(node, cancellationToken));
         }
 
         var evaluator = new ProgressionChecklistEvaluator();
@@ -59,7 +59,7 @@ public sealed class ProgressionPlannerService
         if (dynamicNodes.Length > 0)
         {
             generated = _profileBuilder.Build(profileName, dynamicNodes);
-            generatedPath = await _profileBuilder.SaveTempAsync(generated, cancellationToken: cancellationToken).ConfigureAwait(false);
+            generatedPath = await _profileBuilder.SaveTempAsync(generated, cancellationToken: cancellationToken);
 
             var activity = new OrderBotProfileActivity(
                 _orderBotAdapter,
