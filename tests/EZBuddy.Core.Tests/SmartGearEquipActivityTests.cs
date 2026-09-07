@@ -33,6 +33,25 @@ public sealed class SmartGearEquipActivityTests
     }
 
     [Fact]
+    public void PlannerDoesNotQueueEqualScoreSidegrade()
+    {
+        var items = new[]
+        {
+            Gear(200, "Equipped Body", GearSlot.Body, 730, GearStorageLocation.Equipped, isEquipped: true),
+            Gear(100, "Tie Break Body", GearSlot.Body, 730, GearStorageLocation.ArmoryChest)
+        };
+
+        var gearPlan = SmartGearManager.Build(
+            items,
+            new GearScoreProfile("Paladin"),
+            new GearManagerOptions(730));
+        var plan = SmartGearEquipPlanner.Build(gearPlan);
+
+        Assert.Empty(plan.Instructions);
+        Assert.Contains(plan.Warnings, warning => warning.Contains("does not improve", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task ActivityAppliesOneUpgradePerStepAndCompletes()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
