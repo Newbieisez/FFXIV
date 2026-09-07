@@ -102,6 +102,14 @@ public interface IGrandCompanyAdapter : IEZAdapter
         CancellationToken cancellationToken = default);
 }
 
+public interface ICustomDeliveryAdapter : IEZAdapter
+{
+    Task<bool> RunSelectedAsync(
+        IReadOnlyCollection<string> clientKeys,
+        string craftingClassKey,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IPluginHookAdapter : IEZAdapter
 {
     IReadOnlyCollection<string> SupportedOperations { get; }
