@@ -25,9 +25,14 @@ public enum DutyAutomationMode
 }
 
 public sealed record DutyAutomationRequest(
-    uint QueueDutyId,
+    uint DutyId,
     DutyAutomationMode Mode,
-    int? TrustId = null);
+    int? TrustId = null)
+{
+    // DutyId is retained for source compatibility. It specifically means the
+    // RebornBuddy/Llama queue-registration ID, never the territory/map ID.
+    public uint QueueDutyId => DutyId;
+}
 
 public sealed record DutyAutomationStatus(
     string State,
