@@ -178,6 +178,12 @@ public sealed class RunLoopController : IRunLoopController
         }
     }
 
+    public void NotifyHostStopRequested()
+        => SetStatus(RunLoopState.Stopping, "RebornBuddy stop requested; active activity cancellation is propagating.");
+
+    public void NotifyHostStopped()
+        => SetStatus(RunLoopState.Idle, "RebornBuddy stopped EZBuddy; pending queue state was preserved.");
+
     private Task QueueSignalAsync(RunLoopSignal signal, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
