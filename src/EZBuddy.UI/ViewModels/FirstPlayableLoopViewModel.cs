@@ -1,6 +1,7 @@
 using System.Windows.Input;
 using EZBuddy.Core.Adapters;
 using EZBuddy.Core.Bundles;
+using EZBuddy.Core.Duties;
 using EZBuddy.Core.Settings;
 using EZBuddy.UI.Infrastructure;
 
@@ -12,12 +13,15 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
     private readonly IObservableSettings _settings;
     private bool _applyingSettings;
 
-    private string _dutyId = string.Empty;
+    private string _queueDutyId = string.Empty;
+    private string _dutyTerritoryId = string.Empty;
     private string _dutyProfilePath = string.Empty;
     private string _dutyMode = nameof(DutyAutomationMode.DutySupport);
     private string _trustId = string.Empty;
     private string _targetLevel = string.Empty;
     private string _maxRuns = "1";
+    private string _dutyLootAction = nameof(EZBuddy.Core.Duties.DutyLootAction.Greed);
+    private string _dutyLootPassAtOrBelowFreeSlots = "3";
     private string _minimumDutyFreeSlots = "6";
     private string _inventoryTargetFreeSlots = "12";
     private string _minimumRetainerFreeSlots = "8";
@@ -58,14 +62,24 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
         nameof(DutyAutomationMode.Trust)
     ];
 
+    public IReadOnlyList<string> DutyLootActions { get; } =
+    [
+        nameof(EZBuddy.Core.Duties.DutyLootAction.Greed),
+        nameof(EZBuddy.Core.Duties.DutyLootAction.Pass),
+        nameof(EZBuddy.Core.Duties.DutyLootAction.LeaveUnchanged)
+    ];
+
     public string SettingsPath => _settings.FilePath;
 
-    public string DutyId { get => _dutyId; set => SetAndSchedule(ref _dutyId, value); }
+    public string QueueDutyId { get => _queueDutyId; set => SetAndSchedule(ref _queueDutyId, value); }
+    public string DutyTerritoryId { get => _dutyTerritoryId; set => SetAndSchedule(ref _dutyTerritoryId, value); }
     public string DutyProfilePath { get => _dutyProfilePath; set => SetAndSchedule(ref _dutyProfilePath, value); }
     public string DutyMode { get => _dutyMode; set => SetAndSchedule(ref _dutyMode, value); }
     public string TrustId { get => _trustId; set => SetAndSchedule(ref _trustId, value); }
     public string TargetLevel { get => _targetLevel; set => SetAndSchedule(ref _targetLevel, value); }
     public string MaxRuns { get => _maxRuns; set => SetAndSchedule(ref _maxRuns, value); }
+    public string DutyLootAction { get => _dutyLootAction; set => SetAndSchedule(ref _dutyLootAction, value); }
+    public string DutyLootPassAtOrBelowFreeSlots { get => _dutyLootPassAtOrBelowFreeSlots; set => SetAndSchedule(ref _dutyLootPassAtOrBelowFreeSlots, value); }
     public string MinimumDutyFreeSlots { get => _minimumDutyFreeSlots; set => SetAndSchedule(ref _minimumDutyFreeSlots, value); }
     public string InventoryTargetFreeSlots { get => _inventoryTargetFreeSlots; set => SetAndSchedule(ref _inventoryTargetFreeSlots, value); }
     public string MinimumRetainerFreeSlots { get => _minimumRetainerFreeSlots; set => SetAndSchedule(ref _minimumRetainerFreeSlots, value); }
@@ -211,10 +225,12 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
         settings = new FirstPlayableLoopSettings();
         error = string.Empty;
 
-        if (!TryUInt(DutyId, "Duty ID", allowEmpty: !RunDutyLoop, out var dutyId, out error) ||
+        if (!TryUInt(QueueDutyId, "Queue/registration duty ID", allowEmpty: !RunDutyLoop, out var queueDutyId, out error) ||
+            !TryUInt(DutyTerritoryId, "Duty territory/map ID", allowEmpty: true, out var territoryId, out error) ||
             !TryNullableInt(TrustId, "Trust ID", out var trustId, out error) ||
             !TryNullableInt(TargetLevel, "Target level", out var targetLevel, out error) ||
             !TryInt(MaxRuns, "Maximum runs", out var maxRuns, out error) ||
+            !TryInt(DutyLootPassAtOrBelowFreeSlots, "Loot pass-at free-slot threshold", out var lootPassAt, out error) ||
             !TryInt(MinimumDutyFreeSlots, "Minimum duty free slots", out var minimumSlots, out error) ||
             !TryInt(InventoryTargetFreeSlots, "Inventory target free slots", out var targetSlots, out error) ||
             !TryInt(MinimumRetainerFreeSlots, "Minimum retainer free slots", out var minimumRetainerSlots, out error) ||
@@ -229,8 +245,14 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             ? DutyAutomationMode.Trust
             : DutyAutomationMode.DutySupport;
 
+        if (!Enum.TryParse<EZBuddy.Core.Duties.DutyLootAction>(DutyLootAction, ignoreCase: true, out var lootAction))
+        {
+            error = "Duty loot action is invalid.";
+            return false;
+        }
+
         settings = new FirstPlayableLoopSettings(
-            DutyId: dutyId,
+            DutyId: queueDutyId,
             DutyProfilePath: DutyProfilePath.Trim(),
             DutyMode: mode,
             TrustId: trustId,
@@ -250,7 +272,10 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
             RunDailyProgression: RunDailyProgression,
             RunDutyLoop: RunDutyLoop,
             ReturnToIdle: ReturnToIdle,
-            ApprovedExpertDeliveryItemIds: approvedItems);
+            ApprovedExpertDeliveryItemIds: approvedItems,
+            DutyTerritoryId: territoryId,
+            DutyLootAction: lootAction,
+            DutyLootPassAtOrBelowFreeSlots: lootPassAt);
 
         return true;
     }
@@ -260,12 +285,15 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposa
         _applyingSettings = true;
         try
         {
-            DutyId = settings.DutyId == 0 ? string.Empty : settings.DutyId.ToString();
+            QueueDutyId = settings.QueueDutyId == 0 ? string.Empty : settings.QueueDutyId.ToString();
+            DutyTerritoryId = settings.DutyTerritoryId == 0 ? string.Empty : settings.DutyTerritoryId.ToString();
             DutyProfilePath = settings.DutyProfilePath;
             DutyMode = settings.DutyMode.ToString();
             TrustId = settings.TrustId?.ToString() ?? string.Empty;
             TargetLevel = settings.TargetLevel?.ToString() ?? string.Empty;
             MaxRuns = settings.MaxRuns.ToString();
+            DutyLootAction = settings.DutyLootAction.ToString();
+            DutyLootPassAtOrBelowFreeSlots = settings.DutyLootPassAtOrBelowFreeSlots.ToString();
             MinimumDutyFreeSlots = settings.MinimumDutyFreeSlots.ToString();
             InventoryTargetFreeSlots = settings.InventoryTargetFreeSlots.ToString();
             MinimumRetainerFreeSlots = settings.MinimumRetainerFreeSlots.ToString();
