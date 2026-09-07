@@ -61,7 +61,8 @@ public sealed class DutySupportLevelingActivity : IEZActivity
 {
     private enum Phase
     {
-        EnterDuty,
+        QueueDuty,
+        AwaitEntry,
         ProfileRunning,
         AwaitDutyExit
     }
@@ -71,7 +72,7 @@ public sealed class DutySupportLevelingActivity : IEZActivity
     private readonly IMagitekAdapter _magitek;
     private readonly IDutyLevelingProgressProvider _progress;
     private readonly DutySupportLevelingOptions _options;
-    private Phase _phase = Phase.EnterDuty;
+    private Phase _phase = Phase.QueueDuty;
     private int _completedRuns;
     private bool _complete;
 
@@ -109,10 +110,8 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             return false;
         }
 
-        var dutyStatus = await _dutySupport.GetStatusAsync(cancellationToken).ConfigureAwait(false);
         var orderStatus = await _orderBot.GetStatusAsync(cancellationToken).ConfigureAwait(false);
-        return dutyStatus.Health is AdapterHealth.Ready or AdapterHealth.Busy &&
-               orderStatus.Health is AdapterHealth.Ready or AdapterHealth.Busy;
+        return orderStatus.Health is AdapterHealth.Ready or AdapterHealth.Busy;
     }
 
     public async Task<ExecutionResult> ExecuteStepAsync(CancellationToken cancellationToken = default)
@@ -142,6 +141,57 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             return ExecutionResult.Block("Duty Support leveling requires Magitek to be the active combat routine.");
         }
 
+        if (_phase == Phase.QueueDuty)
+        {
+            var request = new DutyAutomationRequest(_options.DutyId, _options.Mode, _options.TrustId);
+            var queued = await _dutySupport.EnterAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!queued)
+            {
+                return ExecutionResult.Retry(
+                    "Duty Support / Trust registration did not complete successfully.",
+                    TimeSpan.FromSeconds(3));
+            }
+
+            _phase = Phase.AwaitEntry;
+            return ExecutionResult.Continue("Duty registration submitted; waiting for queue/zone-in on subsequent ticks.");
+        }
+
+        if (_phase == Phase.AwaitEntry)
+        {
+            var dutyStatus = await _dutySupport.GetDutyStatusAsync(cancellationToken).ConfigureAwait(false);
+            if (dutyStatus.IsInDungeon)
+            {
+                var profileStarted = await _orderBot.LoadProfileAsync(_options.ProfilePath, cancellationToken).ConfigureAwait(false);
+                if (!profileStarted)
+                {
+                    return ExecutionResult.Retry(
+                        "Duty entered, but OrderBot could not start the configured duty profile.",
+                        TimeSpan.FromSeconds(3));
+                }
+
+                _phase = Phase.ProfileRunning;
+                return ExecutionResult.Yield("Duty entered and verified OrderBot profile handoff started.");
+            }
+
+            if (string.Equals(dutyStatus.State, "None", StringComparison.OrdinalIgnoreCase))
+            {
+                _phase = Phase.QueueDuty;
+                return ExecutionResult.Retry(
+                    "Duty queue returned to None before zone-in; registration will be retried.",
+                    TimeSpan.FromSeconds(3));
+            }
+
+            var advanced = await _dutySupport.AdvanceEntryAsync(cancellationToken).ConfigureAwait(false);
+            if (!advanced)
+            {
+                return ExecutionResult.Retry(
+                    $"Duty entry bridge could not safely advance state '{dutyStatus.State}'.",
+                    TimeSpan.FromSeconds(2));
+            }
+
+            return ExecutionResult.Yield($"Waiting for duty entry. Current state: {dutyStatus.State}.");
+        }
+
         if (_phase == Phase.ProfileRunning)
         {
             if (await _orderBot.IsProfileRunningAsync(cancellationToken).ConfigureAwait(false))
@@ -163,7 +213,7 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             }
 
             _completedRuns++;
-            _phase = Phase.EnterDuty;
+            _phase = Phase.QueueDuty;
 
             progress = _progress.Read();
             if (GoalReached(progress, out goalReason))
@@ -175,21 +225,7 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             return ExecutionResult.Continue($"Duty run {_completedRuns} completed; preparing the next configured run.");
         }
 
-        var request = new DutyAutomationRequest(_options.DutyId, _options.Mode, _options.TrustId);
-        var entered = await _dutySupport.EnterAsync(request, cancellationToken).ConfigureAwait(false);
-        if (!entered)
-        {
-            return ExecutionResult.Retry("Duty Support / Trust entry did not complete successfully.", TimeSpan.FromSeconds(5));
-        }
-
-        var profileStarted = await _orderBot.LoadProfileAsync(_options.ProfilePath, cancellationToken).ConfigureAwait(false);
-        if (!profileStarted)
-        {
-            return ExecutionResult.Retry("Entered the duty, but OrderBot could not start the configured duty profile.", TimeSpan.FromSeconds(3));
-        }
-
-        _phase = Phase.ProfileRunning;
-        return ExecutionResult.Yield("Duty entered and verified OrderBot profile handoff started.");
+        return ExecutionResult.Fail("Duty Support leveling reached an unknown phase.");
     }
 
     public Task OnHaltAsync(CancellationToken cancellationToken = default)
