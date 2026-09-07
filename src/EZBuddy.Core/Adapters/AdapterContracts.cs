@@ -67,7 +67,15 @@ public interface IOrderBotAdapter : IEZAdapter
 public interface IDutySupportAdapter : IEZAdapter
 {
     Task<DutyAutomationStatus> GetDutyStatusAsync(CancellationToken cancellationToken = default);
+
+    // Registers or selects the requested Duty Support/Trust duty. This method must not
+    // wait for the full queue/zone-in lifecycle; subsequent entry progress is advanced
+    // through AdvanceEntryAsync so the RebornBuddy tick owner regains control.
     Task<bool> EnterAsync(DutyAutomationRequest request, CancellationToken cancellationToken = default);
+
+    // Performs at most one entry-side action for the current tick (for example Commence).
+    // Returns false only when the bridge cannot safely advance the current entry state.
+    Task<bool> AdvanceEntryAsync(CancellationToken cancellationToken = default);
 }
 
 public interface IRetainerSweepAdapter : IEZAdapter
