@@ -28,16 +28,30 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <Button Content="Reload" Command="{Binding FirstLoop.ReloadCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
                         <Button Content="Save" Command="{Binding FirstLoop.SaveCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
+                        <Button Content="Pause" Command="{Binding PauseCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
+                        <Button Content="Resume" Command="{Binding ResumeCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
+                        <Button Content="Gentle Stop" Command="{Binding GentleStopCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
                         <Button Content="▶ Run Loop" Command="{Binding FirstLoop.RunCommand}" Style="{StaticResource PrimaryButtonStyle}"/>
                     </StackPanel>
                 </Grid>
 
                 <Border Style="{StaticResource GoldCardStyle}" Margin="0,0,0,12">
-                    <StackPanel>
-                        <TextBlock Text="STATUS" Style="{StaticResource CaptionStyle}"/>
-                        <TextBlock Text="{Binding FirstLoop.StatusMessage}" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                        <TextBlock Text="{Binding FirstLoop.SettingsPath}" Foreground="{StaticResource TextMutedBrush}" FontSize="9" Margin="0,6,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="130"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="LOOP STATE" Style="{StaticResource CaptionStyle}"/>
+                            <TextBlock Text="{Binding RunLoopState}" FontSize="15" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="STATUS" Style="{StaticResource CaptionStyle}"/>
+                            <TextBlock Text="{Binding RunLoopStatus}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            <TextBlock Text="{Binding FirstLoop.StatusMessage}" TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" FontSize="10" Margin="0,5,0,0"/>
+                            <TextBlock Text="{Binding FirstLoop.SettingsPath}" Foreground="{StaticResource TextMutedBrush}" FontSize="9" Margin="0,5,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
                 </Border>
 
                 <Grid Margin="0,0,0,12">
