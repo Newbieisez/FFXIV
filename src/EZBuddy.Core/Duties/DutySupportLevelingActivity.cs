@@ -5,7 +5,8 @@ namespace EZBuddy.Core.Duties;
 
 public sealed record DutyLevelingProgress(
     int CurrentLevel,
-    int FreeInventorySlots);
+    int FreeInventorySlots,
+    uint TerritoryId = 0);
 
 public interface IDutyLevelingProgressProvider
 {
@@ -21,13 +22,17 @@ public sealed record DutySupportLevelingOptions(
     int? MaxRuns = 1,
     int MinimumFreeInventorySlots = 5,
     DutyLootPolicy? LootPolicy = null,
-    int PostRunConfirmationTimeoutSeconds = 20)
+    int PostRunConfirmationTimeoutSeconds = 20,
+    uint TerritoryId = 0)
 {
+    // DutyId is retained for source/settings compatibility. It specifically means the
+    // RebornBuddy/Llama queue-registration ID, not the in-instance territory/map ID.
+    public uint QueueDutyId => DutyId;
     public DutyLootPolicy EffectiveLootPolicy => LootPolicy ?? new DutyLootPolicy();
 
     public void Validate()
     {
-        if (DutyId == 0)
+        if (QueueDutyId == 0)
         {
             throw new ArgumentOutOfRangeException(nameof(DutyId));
         }
@@ -187,7 +192,7 @@ public sealed class DutySupportLevelingActivity : IEZActivity
 
     private async Task<ExecutionResult> QueueDutyAsync(CancellationToken cancellationToken)
     {
-        var request = new DutyAutomationRequest(_options.DutyId, _options.Mode, _options.TrustId);
+        var request = new DutyAutomationRequest(_options.QueueDutyId, _options.Mode, _options.TrustId);
         var queued = await _dutySupport.EnterAsync(request, cancellationToken);
         if (!queued)
         {
@@ -197,7 +202,8 @@ public sealed class DutySupportLevelingActivity : IEZActivity
         }
 
         _phase = Phase.AwaitEntry;
-        return ExecutionResult.Continue("Duty registration submitted; waiting for queue/zone-in on subsequent ticks.");
+        return ExecutionResult.Continue(
+            $"Duty registration {_options.QueueDutyId} submitted; waiting for queue/zone-in on subsequent ticks.");
     }
 
     private async Task<ExecutionResult> AwaitEntryAsync(CancellationToken cancellationToken)
@@ -205,6 +211,13 @@ public sealed class DutySupportLevelingActivity : IEZActivity
         var dutyStatus = await _dutySupport.GetDutyStatusAsync(cancellationToken);
         if (dutyStatus.IsInDungeon)
         {
+            var progress = _progress.Read();
+            if (_options.TerritoryId != 0 && progress.TerritoryId != _options.TerritoryId)
+            {
+                return ExecutionResult.Block(
+                    $"Duty queue reported zone-in, but territory {progress.TerritoryId} does not match configured territory {_options.TerritoryId}. OrderBot handoff was not started.");
+            }
+
             var profileStarted = await _orderBot.LoadProfileAsync(_options.ProfilePath, cancellationToken);
             if (!profileStarted)
             {
@@ -214,7 +227,10 @@ public sealed class DutySupportLevelingActivity : IEZActivity
             }
 
             _phase = Phase.ProfileRunning;
-            return ExecutionResult.Yield("Duty entered and verified OrderBot profile handoff started.");
+            return ExecutionResult.Yield(
+                _options.TerritoryId == 0
+                    ? "Duty entered and verified OrderBot profile handoff started; no territory verification was configured."
+                    : $"Duty entered in verified territory {_options.TerritoryId}; OrderBot profile handoff started.");
         }
 
         if (string.Equals(dutyStatus.State, "None", StringComparison.OrdinalIgnoreCase))
@@ -291,9 +307,8 @@ public sealed class DutySupportLevelingActivity : IEZActivity
 
             if (!processed)
             {
-                return ExecutionResult.Retry(
-                    "Duty completion is confirmed, but the loot window could not be processed safely.",
-                    TimeSpan.FromSeconds(2));
+                return ExecutionResult.Block(
+                    "Duty completion is confirmed, but the configured loot policy cannot be executed safely in the current client/plugin environment. Resolve loot manually or restore a compatible loot bridge.");
             }
 
             return ExecutionResult.Yield("Post-duty loot policy applied; rechecking completion UI before leaving.");
