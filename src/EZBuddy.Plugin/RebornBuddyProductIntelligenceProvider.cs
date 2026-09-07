@@ -138,22 +138,24 @@ public sealed class RebornBuddyProductIntelligenceProvider : IProductIntelligenc
         var store = new JsonProductSnapshotStore(path);
 
         string? captureWarning = null;
-        ProductSnapshotBundle? snapshot = null;
+        var previousSnapshot = await store.LoadAsync(cancellationToken).ConfigureAwait(true);
+        ProductSnapshotBundle? snapshot = previousSnapshot;
         if (characterAvailable)
         {
             try
             {
                 var collector = ProductSnapshotRuntime.Collector ?? new RebornBuddyProductSnapshotCollector();
-                snapshot = await collector.CaptureAsync(cancellationToken).ConfigureAwait(true);
+                var liveSnapshot = await collector.CaptureAsync(cancellationToken).ConfigureAwait(true);
+                snapshot = ProductSnapshotMerger.MergeLive(liveSnapshot, previousSnapshot);
                 await store.SaveAsync(snapshot, cancellationToken).ConfigureAwait(true);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
+                snapshot = previousSnapshot;
                 captureWarning = $"Product Snapshot: live capture failed; using the last good saved snapshot if available — {exception.Message}";
             }
         }
 
-        snapshot ??= await store.LoadAsync(cancellationToken).ConfigureAwait(true);
         if (snapshot is null)
         {
             return captureWarning is null
