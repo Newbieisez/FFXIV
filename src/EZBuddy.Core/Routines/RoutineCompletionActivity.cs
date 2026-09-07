@@ -28,6 +28,7 @@ public sealed class RoutineCompletionActivity : IEZActivity
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
     }
 
+    public string RoutineKey => _routineKey;
     public Guid Id => _inner.Id;
     public string Name => _inner.Name;
     public ActivityCategory Category => _inner.Category;

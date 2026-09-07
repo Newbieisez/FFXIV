@@ -1,4 +1,5 @@
 using EZBuddy.Core.Engine;
+using EZBuddy.Core.Routines;
 
 namespace EZBuddy.Core.Bundles;
 
@@ -61,7 +62,9 @@ public sealed class FirstPlayableBundlePlanner
             activities.Add((_factory.CreateInventoryPressureReliefActivity(), "Inventory pressure relieved or safely blocked"));
         }
 
-        foreach (var activity in options.BeforeProgressionActivities ?? Array.Empty<IEZActivity>())
+        foreach (var activity in (options.BeforeProgressionActivities ?? Array.Empty<IEZActivity>())
+                     .OrderByDescending(GetRoutinePriority)
+                     .ThenBy(activity => activity.Name, StringComparer.OrdinalIgnoreCase))
         {
             activities.Add((activity, $"{activity.Name} routine complete"));
         }
@@ -100,6 +103,16 @@ public sealed class FirstPlayableBundlePlanner
         }
 
         return new FirstPlayableBundlePlan(activityIds, stageNames);
+    }
+
+    private static int GetRoutinePriority(IEZActivity activity)
+    {
+        if (activity is not RoutineCompletionActivity routineActivity)
+        {
+            return 0;
+        }
+
+        return EZRoutineCatalog.Find(routineActivity.RoutineKey)?.Priority ?? 0;
     }
 
     private static void ValidateStage(IEZActivity activity)

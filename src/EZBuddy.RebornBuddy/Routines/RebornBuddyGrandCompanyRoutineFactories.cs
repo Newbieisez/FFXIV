@@ -72,16 +72,19 @@ public sealed class RebornBuddyVentureTokenRefillRoutineFactory : IRoutineActivi
     private readonly IReadOnlyCollection<uint> _approvedExpertDeliveryItemIds;
     private readonly int _minimumQuantity;
     private readonly int _targetQuantity;
+    private readonly int _sealSafetyBuffer;
 
     public RebornBuddyVentureTokenRefillRoutineFactory(
         IReadOnlyCollection<uint> approvedExpertDeliveryItemIds,
         int minimumQuantity,
-        int targetQuantity)
+        int targetQuantity,
+        int sealSafetyBuffer = 1000)
     {
         _approvedExpertDeliveryItemIds = approvedExpertDeliveryItemIds
             ?? throw new ArgumentNullException(nameof(approvedExpertDeliveryItemIds));
         _minimumQuantity = minimumQuantity;
         _targetQuantity = targetQuantity;
+        _sealSafetyBuffer = sealSafetyBuffer;
     }
 
     public string RoutineKey => "retainer-venture-refill";
@@ -93,14 +96,17 @@ public sealed class RebornBuddyVentureTokenRefillRoutineFactory : IRoutineActivi
         cancellationToken.ThrowIfCancellationRequested();
         var adapter = EZBuddyRuntime.Adapters.All.OfType<IGrandCompanyAdapter>().FirstOrDefault()
             ?? new LlamaGrandCompanyAdapter();
-        IEZActivity activity = new VentureTokenRefillActivity(
+        var quantities = new RebornBuddyInventoryQuantityProvider();
+        IEZActivity activity = new VentureSealPressureActivity(
             adapter,
-            new RebornBuddyInventoryQuantityProvider(),
+            quantities,
+            new LlamaGrandCompanySealStateProvider(),
             new VentureTokenRefillOptions(
                 VentureItemId: 21072,
                 MinimumQuantity: _minimumQuantity,
                 TargetQuantity: _targetQuantity,
-                ApprovedExpertDeliveryItemIds: _approvedExpertDeliveryItemIds));
+                ApprovedExpertDeliveryItemIds: _approvedExpertDeliveryItemIds),
+            new VentureSealPressureOptions(_sealSafetyBuffer));
         return Task.FromResult<IEZActivity?>(activity);
     }
 }
