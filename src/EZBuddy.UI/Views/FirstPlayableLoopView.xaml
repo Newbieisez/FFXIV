@@ -1,0 +1,145 @@
+<UserControl x:Class="EZBuddy.UI.Views.FirstPlayableLoopView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Visibility="{Binding IsFirstLoopWorkspace, Converter={StaticResource LoopBoolToVisibility}}">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="../Themes/EZBuddyTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="LoopBoolToVisibility"/>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource BackgroundBrush}" Padding="14">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="1050" HorizontalAlignment="Left">
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="FIRST PLAYABLE LOOP" Style="{StaticResource CaptionStyle}"/>
+                        <TextBlock Text="Configure &amp; Run EZBuddy" FontSize="22" FontWeight="SemiBold" Margin="0,3,0,0"/>
+                        <TextBlock Text="Maintenance → Retainers → Inventory Relief → Daily Progression → Duty Support / Trust → Idle"
+                                   Foreground="{StaticResource TextMutedBrush}" FontSize="11" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Reload" Command="{Binding FirstLoop.ReloadCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
+                        <Button Content="Save" Command="{Binding FirstLoop.SaveCommand}" Style="{StaticResource IconButtonStyle}" Margin="0,0,8,0"/>
+                        <Button Content="▶ Run Loop" Command="{Binding FirstLoop.RunCommand}" Style="{StaticResource PrimaryButtonStyle}"/>
+                    </StackPanel>
+                </Grid>
+
+                <Border Style="{StaticResource GoldCardStyle}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="STATUS" Style="{StaticResource CaptionStyle}"/>
+                        <TextBlock Text="{Binding FirstLoop.StatusMessage}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        <TextBlock Text="{Binding FirstLoop.SettingsPath}" Foreground="{StaticResource TextMutedBrush}" FontSize="9" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1*"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="1*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="DUTY / LEVELING" Style="{StaticResource SectionTitleStyle}"/>
+                            <TextBlock Text="DUTY ID" Style="{StaticResource CaptionStyle}" Margin="0,10,0,0"/>
+                            <TextBox Text="{Binding FirstLoop.DutyId, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
+
+                            <TextBlock Text="ORDERBOT PROFILE PATH" Style="{StaticResource CaptionStyle}"/>
+                            <TextBox Text="{Binding FirstLoop.DutyProfilePath, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="1*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="MODE" Style="{StaticResource CaptionStyle}"/>
+                                    <ComboBox ItemsSource="{Binding FirstLoop.DutyModes}"
+                                              SelectedItem="{Binding FirstLoop.DutyMode, Mode=TwoWay}"
+                                              Margin="0,4,0,8" Padding="6"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="TRUST ID" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBox Text="{Binding FirstLoop.TrustId, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="1*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="TARGET LEVEL" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBox Text="{Binding FirstLoop.TargetLevel, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="MAX RUNS" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBox Text="{Binding FirstLoop.MaxRuns, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="MAINTENANCE &amp; INVENTORY" Style="{StaticResource SectionTitleStyle}"/>
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="1*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="DUTY FREE-SLOT FLOOR" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBox Text="{Binding FirstLoop.MinimumDutyFreeSlots, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="INVENTORY TARGET" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBox Text="{Binding FirstLoop.InventoryTargetFreeSlots, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8" Padding="8,6"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="FOOD ITEM ID" Style="{StaticResource CaptionStyle}"/>
+                            <TextBox Text="{Binding FirstLoop.FoodItemId, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,6" Padding="8,6"/>
+                            <CheckBox Content="Require Well Fed before duty work" IsChecked="{Binding FirstLoop.RequireWellFed}" Margin="0,0,0,10"/>
+
+                            <TextBlock Text="APPROVED GC EXPERT DELIVERY ITEM IDS" Style="{StaticResource CaptionStyle}"/>
+                            <TextBox Text="{Binding FirstLoop.ApprovedExpertDeliveryItemIds, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,4,0,4" Padding="8,6" AcceptsReturn="True" Height="64" TextWrapping="Wrap"/>
+                            <TextBlock Text="Comma-separated allowlist only. EZBuddy will not auto-turn-in unapproved gear."
+                                       Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="LOOP STAGES" Style="{StaticResource SectionTitleStyle}"/>
+                        <WrapPanel Margin="0,10,0,0">
+                            <CheckBox Content="Maintenance" IsChecked="{Binding FirstLoop.RunMaintenance}" Margin="0,0,18,8"/>
+                            <CheckBox Content="Retainers" IsChecked="{Binding FirstLoop.RunRetainers}" Margin="0,0,18,8"/>
+                            <CheckBox Content="Inventory Relief" IsChecked="{Binding FirstLoop.RunInventoryPressureRelief}" Margin="0,0,18,8"/>
+                            <CheckBox Content="Daily Progression" IsChecked="{Binding FirstLoop.RunDailyProgression}" Margin="0,0,18,8"/>
+                            <CheckBox Content="Duty Loop" IsChecked="{Binding FirstLoop.RunDutyLoop}" Margin="0,0,18,8"/>
+                            <CheckBox Content="Return to Idle" IsChecked="{Binding FirstLoop.ReturnToIdle}" Margin="0,0,18,8"/>
+                        </WrapPanel>
+                        <TextBlock Text="Combat remains delegated to Magitek. Duty entry uses the optional Duty Support/Trust bridge; destructive GC actions remain allowlist-only."
+                                   Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>
