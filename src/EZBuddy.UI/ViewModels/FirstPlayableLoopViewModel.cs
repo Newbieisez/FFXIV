@@ -6,10 +6,11 @@ using EZBuddy.UI.Infrastructure;
 
 namespace EZBuddy.UI.ViewModels;
 
-public sealed class FirstPlayableLoopViewModel : ObservableObject
+public sealed class FirstPlayableLoopViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly IFirstPlayableLoopController? _controller;
-    private readonly IEZBuddySettingsStore _settingsStore;
+    private readonly IObservableSettings _settings;
+    private bool _applyingSettings;
 
     private string _dutyId = string.Empty;
     private string _dutyProfilePath = string.Empty;
@@ -28,14 +29,15 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject
     private bool _runDailyProgression = true;
     private bool _runDutyLoop = true;
     private bool _returnToIdle = true;
-    private string _statusMessage = "Load or configure the first playable loop, then save and run it.";
+    private string _statusMessage = "Load or configure the first playable loop, then run it.";
 
     public FirstPlayableLoopViewModel(
         IFirstPlayableLoopController? controller,
-        IEZBuddySettingsStore? settingsStore = null)
+        IObservableSettings? settings = null)
     {
         _controller = controller;
-        _settingsStore = settingsStore ?? new JsonEZBuddySettingsStore();
+        _settings = settings ?? new JsonEZBuddySettingsManager(new JsonEZBuddySettingsStore());
+        _settings.SettingsChanged += OnSettingsChanged;
 
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         RunCommand = new AsyncRelayCommand(RunAsync);
@@ -52,33 +54,33 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject
         nameof(DutyAutomationMode.Trust)
     ];
 
-    public string SettingsPath => _settingsStore.FilePath;
+    public string SettingsPath => _settings.FilePath;
 
-    public string DutyId { get => _dutyId; set => SetProperty(ref _dutyId, value); }
-    public string DutyProfilePath { get => _dutyProfilePath; set => SetProperty(ref _dutyProfilePath, value); }
-    public string DutyMode { get => _dutyMode; set => SetProperty(ref _dutyMode, value); }
-    public string TrustId { get => _trustId; set => SetProperty(ref _trustId, value); }
-    public string TargetLevel { get => _targetLevel; set => SetProperty(ref _targetLevel, value); }
-    public string MaxRuns { get => _maxRuns; set => SetProperty(ref _maxRuns, value); }
-    public string MinimumDutyFreeSlots { get => _minimumDutyFreeSlots; set => SetProperty(ref _minimumDutyFreeSlots, value); }
-    public string InventoryTargetFreeSlots { get => _inventoryTargetFreeSlots; set => SetProperty(ref _inventoryTargetFreeSlots, value); }
-    public string FoodItemId { get => _foodItemId; set => SetProperty(ref _foodItemId, value); }
-    public string ApprovedExpertDeliveryItemIds { get => _approvedExpertDeliveryItemIds; set => SetProperty(ref _approvedExpertDeliveryItemIds, value); }
-    public bool RequireWellFed { get => _requireWellFed; set => SetProperty(ref _requireWellFed, value); }
-    public bool RunMaintenance { get => _runMaintenance; set => SetProperty(ref _runMaintenance, value); }
-    public bool RunRetainers { get => _runRetainers; set => SetProperty(ref _runRetainers, value); }
-    public bool RunInventoryPressureRelief { get => _runInventoryPressureRelief; set => SetProperty(ref _runInventoryPressureRelief, value); }
-    public bool RunDailyProgression { get => _runDailyProgression; set => SetProperty(ref _runDailyProgression, value); }
-    public bool RunDutyLoop { get => _runDutyLoop; set => SetProperty(ref _runDutyLoop, value); }
-    public bool ReturnToIdle { get => _returnToIdle; set => SetProperty(ref _returnToIdle, value); }
+    public string DutyId { get => _dutyId; set => SetAndSchedule(ref _dutyId, value); }
+    public string DutyProfilePath { get => _dutyProfilePath; set => SetAndSchedule(ref _dutyProfilePath, value); }
+    public string DutyMode { get => _dutyMode; set => SetAndSchedule(ref _dutyMode, value); }
+    public string TrustId { get => _trustId; set => SetAndSchedule(ref _trustId, value); }
+    public string TargetLevel { get => _targetLevel; set => SetAndSchedule(ref _targetLevel, value); }
+    public string MaxRuns { get => _maxRuns; set => SetAndSchedule(ref _maxRuns, value); }
+    public string MinimumDutyFreeSlots { get => _minimumDutyFreeSlots; set => SetAndSchedule(ref _minimumDutyFreeSlots, value); }
+    public string InventoryTargetFreeSlots { get => _inventoryTargetFreeSlots; set => SetAndSchedule(ref _inventoryTargetFreeSlots, value); }
+    public string FoodItemId { get => _foodItemId; set => SetAndSchedule(ref _foodItemId, value); }
+    public string ApprovedExpertDeliveryItemIds { get => _approvedExpertDeliveryItemIds; set => SetAndSchedule(ref _approvedExpertDeliveryItemIds, value); }
+    public bool RequireWellFed { get => _requireWellFed; set => SetAndSchedule(ref _requireWellFed, value); }
+    public bool RunMaintenance { get => _runMaintenance; set => SetAndSchedule(ref _runMaintenance, value); }
+    public bool RunRetainers { get => _runRetainers; set => SetAndSchedule(ref _runRetainers, value); }
+    public bool RunInventoryPressureRelief { get => _runInventoryPressureRelief; set => SetAndSchedule(ref _runInventoryPressureRelief, value); }
+    public bool RunDailyProgression { get => _runDailyProgression; set => SetAndSchedule(ref _runDailyProgression, value); }
+    public bool RunDutyLoop { get => _runDutyLoop; set => SetAndSchedule(ref _runDutyLoop, value); }
+    public bool ReturnToIdle { get => _returnToIdle; set => SetAndSchedule(ref _returnToIdle, value); }
     public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
 
     public async Task LoadAsync()
     {
         try
         {
-            var settings = await _settingsStore.LoadAsync().ConfigureAwait(true);
-            Apply(settings.FirstPlayableLoop);
+            await _settings.LoadAsync().ConfigureAwait(true);
+            Apply(_settings.Current.FirstPlayableLoop);
             OnPropertyChanged(nameof(SettingsPath));
             StatusMessage = $"Settings loaded from {SettingsPath}.";
         }
@@ -86,6 +88,25 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject
         {
             StatusMessage = $"Could not load settings: {exception.Message}";
         }
+    }
+
+    public async Task FlushAsync()
+    {
+        try
+        {
+            SynchronizeSettingsFromEditor();
+            await _settings.FlushAsync().ConfigureAwait(true);
+        }
+        catch
+        {
+            // Window close/shutdown should not throw because a settings flush failed.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _settings.SettingsChanged -= OnSettingsChanged;
+        await _settings.DisposeAsync().ConfigureAwait(false);
     }
 
     private async Task SaveAsync()
@@ -105,8 +126,8 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject
 
         try
         {
-            var existing = await _settingsStore.LoadAsync().ConfigureAwait(true);
-            await _settingsStore.SaveAsync(existing with { FirstPlayableLoop = loopSettings }).ConfigureAwait(true);
+            _settings.Update(current => current with { FirstPlayableLoop = loopSettings });
+            await _settings.FlushAsync().ConfigureAwait(true);
             StatusMessage = $"First-loop settings saved to {SettingsPath}.";
         }
         catch (Exception exception)
@@ -138,8 +159,8 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject
 
         try
         {
-            var existing = await _settingsStore.LoadAsync().ConfigureAwait(true);
-            await _settingsStore.SaveAsync(existing with { FirstPlayableLoop = loopSettings }).ConfigureAwait(true);
+            _settings.Update(current => current with { FirstPlayableLoop = loopSettings });
+            await _settings.FlushAsync().ConfigureAwait(true);
 
             var result = await _controller.QueueAsync(loopSettings).ConfigureAwait(true);
             StatusMessage = result.Message;
@@ -148,6 +169,34 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject
         {
             StatusMessage = $"First loop failed to start: {exception.Message}";
         }
+    }
+
+    private void SynchronizeSettingsFromEditor()
+    {
+        if (TryBuildSettings(out var loopSettings, out _))
+        {
+            _settings.Update(current => current with { FirstPlayableLoop = loopSettings });
+        }
+    }
+
+    private void ScheduleSettingsUpdate()
+    {
+        if (_applyingSettings)
+        {
+            return;
+        }
+
+        SynchronizeSettingsFromEditor();
+    }
+
+    private void OnSettingsChanged(object? sender, EZBuddySettings settings)
+    {
+        if (_applyingSettings)
+        {
+            return;
+        }
+
+        Apply(settings.FirstPlayableLoop);
     }
 
     private bool TryBuildSettings(out FirstPlayableLoopSettings settings, out string error)
@@ -195,23 +244,42 @@ public sealed class FirstPlayableLoopViewModel : ObservableObject
 
     private void Apply(FirstPlayableLoopSettings settings)
     {
-        DutyId = settings.DutyId == 0 ? string.Empty : settings.DutyId.ToString();
-        DutyProfilePath = settings.DutyProfilePath;
-        DutyMode = settings.DutyMode.ToString();
-        TrustId = settings.TrustId?.ToString() ?? string.Empty;
-        TargetLevel = settings.TargetLevel?.ToString() ?? string.Empty;
-        MaxRuns = settings.MaxRuns.ToString();
-        MinimumDutyFreeSlots = settings.MinimumDutyFreeSlots.ToString();
-        InventoryTargetFreeSlots = settings.InventoryTargetFreeSlots.ToString();
-        FoodItemId = settings.FoodItemId == 0 ? string.Empty : settings.FoodItemId.ToString();
-        ApprovedExpertDeliveryItemIds = string.Join(",", settings.EffectiveApprovedExpertDeliveryItemIds);
-        RequireWellFed = settings.RequireWellFed;
-        RunMaintenance = settings.RunMaintenance;
-        RunRetainers = settings.RunRetainers;
-        RunInventoryPressureRelief = settings.RunInventoryPressureRelief;
-        RunDailyProgression = settings.RunDailyProgression;
-        RunDutyLoop = settings.RunDutyLoop;
-        ReturnToIdle = settings.ReturnToIdle;
+        _applyingSettings = true;
+        try
+        {
+            DutyId = settings.DutyId == 0 ? string.Empty : settings.DutyId.ToString();
+            DutyProfilePath = settings.DutyProfilePath;
+            DutyMode = settings.DutyMode.ToString();
+            TrustId = settings.TrustId?.ToString() ?? string.Empty;
+            TargetLevel = settings.TargetLevel?.ToString() ?? string.Empty;
+            MaxRuns = settings.MaxRuns.ToString();
+            MinimumDutyFreeSlots = settings.MinimumDutyFreeSlots.ToString();
+            InventoryTargetFreeSlots = settings.InventoryTargetFreeSlots.ToString();
+            FoodItemId = settings.FoodItemId == 0 ? string.Empty : settings.FoodItemId.ToString();
+            ApprovedExpertDeliveryItemIds = string.Join(",", settings.EffectiveApprovedExpertDeliveryItemIds);
+            RequireWellFed = settings.RequireWellFed;
+            RunMaintenance = settings.RunMaintenance;
+            RunRetainers = settings.RunRetainers;
+            RunInventoryPressureRelief = settings.RunInventoryPressureRelief;
+            RunDailyProgression = settings.RunDailyProgression;
+            RunDutyLoop = settings.RunDutyLoop;
+            ReturnToIdle = settings.ReturnToIdle;
+        }
+        finally
+        {
+            _applyingSettings = false;
+        }
+    }
+
+    private bool SetAndSchedule<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
+    {
+        if (!SetProperty(ref field, value, propertyName))
+        {
+            return false;
+        }
+
+        ScheduleSettingsUpdate();
+        return true;
     }
 
     private static bool TryInt(string text, string label, out int value, out string error)
