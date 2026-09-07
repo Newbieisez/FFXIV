@@ -41,7 +41,7 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         _ = RebornBuddySettingsSession.GetOrCreate();
         InitializeSessionSafety();
         _ = EZBuddyRuntime.RunLoop.StartAsync();
-        ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase started with shared per-character settings, session-safety policy, and a new execution cancellation scope.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase started with shared per-character settings, session/social safety hooks, and a new execution cancellation scope.");
     }
 
     public override void Stop()
@@ -87,18 +87,20 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         var runLoop = EZBuddyRuntime.RunLoop;
         var queue = EZBuddyRuntime.Queue;
 
-        var current = queue.CurrentActivity;
-        if (current is not null && RequiresMagitek(current.Category) && !MagitekAdapter.IsActive(out var diagnostic))
-        {
-            ff14bot.Helpers.Logging.Write($"[EZBuddy Combat Guard] {diagnostic}");
-            queue.Pause();
-            runLoop.ObserveEngineState();
-            await Coroutine.Yield();
-            return false;
-        }
-
         try
         {
+            await PollSocialSafetyAsync(runLoop, token).ConfigureAwait(true);
+
+            var current = queue.CurrentActivity;
+            if (current is not null && RequiresMagitek(current.Category) && !MagitekAdapter.IsActive(out var diagnostic))
+            {
+                ff14bot.Helpers.Logging.Write($"[EZBuddy Combat Guard] {diagnostic}");
+                queue.Pause();
+                runLoop.ObserveEngineState();
+                await Coroutine.Yield();
+                return false;
+            }
+
             var result = await runLoop.TickAsync(token).ConfigureAwait(true);
             await ApplySessionSafetyAsync(queue, runLoop, token).ConfigureAwait(true);
 
@@ -116,6 +118,35 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             return false;
+        }
+    }
+
+    private static async Task PollSocialSafetyAsync(
+        IRunLoopController runLoop,
+        CancellationToken cancellationToken)
+    {
+        var monitor = SocialSafetyRuntime.Monitor;
+        if (monitor is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await monitor.PollAsync(cancellationToken).ConfigureAwait(true);
+            if (result.PauseRequested)
+            {
+                ff14bot.Helpers.Logging.Write($"[EZBuddy Social Safety] Pausing for user review after {result.ReviewSignals.Count} inbound contact signal(s).");
+                await runLoop.ApplyPendingSignalsAsync(cancellationToken).ConfigureAwait(true);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Social Safety] Poll failed without affecting the activity engine: {exception.Message}");
         }
     }
 
