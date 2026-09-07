@@ -2,7 +2,6 @@ using System.Windows;
 using EZBuddy.Core.Licensing;
 using EZBuddy.Core.Notifications;
 using EZBuddy.Core.Runtime;
-using EZBuddy.Core.Settings;
 using EZBuddy.RebornBuddy.Adapters;
 using EZBuddy.RebornBuddy.Bundles;
 using EZBuddy.RebornBuddy.Licensing;
@@ -34,13 +33,16 @@ public sealed class EZBuddyPlugin : BotPlugin
         RegisterAdapters();
         InitializeLicensing();
         InitializeNotifications();
+        _ = RebornBuddySettingsSession.GetOrCreate();
         LicenseRuntime.LicenseRequired += OnLicenseRequired;
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin initialized. Shared runtime, adapters, licensing, and optional notifications registered.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin initialized. Shared runtime, per-character settings, adapters, licensing, and optional notifications registered.");
     }
 
     public override void OnEnabled()
     {
         RegisterAdapters();
+        _ = RebornBuddySettingsSession.GetOrCreate();
+
         if (_licenseManager is null)
         {
             InitializeLicensing();
@@ -64,7 +66,8 @@ public sealed class EZBuddyPlugin : BotPlugin
     {
         _firstPlayableLoopQueuedThisEnable = false;
         CloseDashboard();
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin disabled. BotBase execution is not forcibly stopped.");
+        _ = RebornBuddySettingsSession.FlushPendingSavesAsync();
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin disabled. BotBase execution is not forcibly stopped; pending settings flush requested.");
     }
 
     public override void OnShutdown()
@@ -72,6 +75,15 @@ public sealed class EZBuddyPlugin : BotPlugin
         LicenseRuntime.LicenseRequired -= OnLicenseRequired;
         CloseDashboard();
         EZBuddyRuntime.Queue.Pause();
+
+        try
+        {
+            RebornBuddySettingsSession.FlushPendingSavesAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            ff14bot.Helpers.Logging.Write($"[EZBuddy Settings] Shutdown flush failed: {exception.Message}");
+        }
 
         if (_notificationTelemetrySink is not null)
         {
@@ -83,7 +95,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         _discordNotificationSink = null;
         _onlineLicenseClient?.Dispose();
         _onlineLicenseClient = null;
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; activity engine paused and optional integrations released.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; activity engine paused, settings flushed, and optional integrations released.");
     }
 
     public override void OnButtonPress() => OpenDashboard(navigateToLicense: false);
@@ -158,8 +170,7 @@ public sealed class EZBuddyPlugin : BotPlugin
 
         try
         {
-            var store = CreateSettingsStore();
-            var settings = store.LoadAsync().GetAwaiter().GetResult();
+            var settings = RebornBuddySettingsSession.GetOrCreate().Current;
             var controller = new RebornBuddyFirstPlayableLoopController();
             var result = controller.QueueAsync(settings.FirstPlayableLoop).GetAwaiter().GetResult();
 
@@ -203,7 +214,7 @@ public sealed class EZBuddyPlugin : BotPlugin
             {
                 if (_window is not { IsVisible: true })
                 {
-                    var settingsManager = new JsonEZBuddySettingsManager(CreateSettingsStore());
+                    var settingsManager = RebornBuddySettingsSession.GetOrCreate();
                     _window = new MainWindow(
                         new RebornBuddyTelemetryProvider(),
                         new RebornBuddyFirstPlayableLoopController(),
@@ -221,24 +232,6 @@ public sealed class EZBuddyPlugin : BotPlugin
                 _window.Activate();
             }
         }));
-    }
-
-    private static JsonEZBuddySettingsStore CreateSettingsStore()
-        => new(
-            new RebornBuddySettingsStoragePathProvider(),
-            GetCharacterSettingsKey());
-
-    private static string GetCharacterSettingsKey()
-    {
-        try
-        {
-            var name = ff14bot.Core.Player?.Name;
-            return string.IsNullOrWhiteSpace(name) ? "default" : name;
-        }
-        catch
-        {
-            return "default";
-        }
     }
 
     private static bool ReadBooleanEnvironmentFlag(string key)
