@@ -25,7 +25,7 @@ public enum DutyAutomationMode
 }
 
 public sealed record DutyAutomationRequest(
-    uint DutyId,
+    uint QueueDutyId,
     DutyAutomationMode Mode,
     int? TrustId = null);
 
@@ -68,9 +68,10 @@ public interface IDutySupportAdapter : IEZAdapter
 {
     Task<DutyAutomationStatus> GetDutyStatusAsync(CancellationToken cancellationToken = default);
 
-    // Registers or selects the requested Duty Support/Trust duty. This method must not
-    // wait for the full queue/zone-in lifecycle; subsequent entry progress is advanced
-    // through AdvanceEntryAsync so the RebornBuddy tick owner regains control.
+    // Registers or selects the requested Duty Support/Trust duty. QueueDutyId is the
+    // RebornBuddy/Llama registration ID, not the territory/map ID used after zone-in.
+    // This method must not wait for the full queue/zone-in lifecycle; subsequent entry
+    // progress is advanced through AdvanceEntryAsync so the tick owner regains control.
     Task<bool> EnterAsync(DutyAutomationRequest request, CancellationToken cancellationToken = default);
 
     // Performs at most one entry-side action for the current tick (for example Commence).
