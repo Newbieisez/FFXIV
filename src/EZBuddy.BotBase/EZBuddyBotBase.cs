@@ -2,6 +2,7 @@ using Buddy.Coroutines;
 using EZBuddy.Core.Engine;
 using EZBuddy.Core.Runtime;
 using EZBuddy.RebornBuddy.Adapters;
+using EZBuddy.RebornBuddy.Settings;
 using ff14bot.Behavior;
 using TreeSharp;
 
@@ -28,8 +29,9 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
             previous.Dispose();
         }
 
+        _ = RebornBuddySettingsSession.GetOrCreate();
         _ = EZBuddyRuntime.RunLoop.StartAsync();
-        ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase started with a new execution cancellation scope.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase started with shared per-character settings and a new execution cancellation scope.");
     }
 
     public override void Stop()
@@ -40,13 +42,15 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
             return;
         }
 
+        _ = EZBuddyRuntime.RunLoop.StopAsync();
+
         var cancellation = Interlocked.Exchange(ref _runCancellation, null);
         cancellation?.Cancel();
 
         EZBuddyRuntime.RunLoop.NotifyHostStopRequested();
         EZBuddyRuntime.Queue.Pause();
         _ = StopQueueAsync(cancellation);
-        ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase stop requested. Active activity cancellation propagated; pending queue preserved.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] BotBase stop requested. Active activity cancellation propagated, pending queue preserved, and settings flush scheduled.");
     }
 
     private async Task<bool> PulseQueueAsync()
@@ -62,22 +66,6 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
         var runLoop = EZBuddyRuntime.RunLoop;
         var queue = EZBuddyRuntime.Queue;
 
-        try
-        {
-            await runLoop.ApplyPendingSignalsAsync(token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-            return false;
-        }
-
-        if (!queue.IsRunning)
-        {
-            runLoop.ObserveEngineState();
-            await Coroutine.Yield();
-            return false;
-        }
-
         var current = queue.CurrentActivity;
         if (current is not null && RequiresMagitek(current.Category) && !MagitekAdapter.IsActive(out var diagnostic))
         {
@@ -90,8 +78,7 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
 
         try
         {
-            var result = await queue.TickAsync(token).ConfigureAwait(true);
-            runLoop.ObserveEngineState();
+            var result = await runLoop.TickAsync(token).ConfigureAwait(true);
 
             if (result.RetryAfter is { } retryAfter && retryAfter > TimeSpan.Zero)
             {
@@ -117,10 +104,12 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
             await EZBuddyRuntime.Queue.StopAsync(
                 preservePendingQueue: true,
                 cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+            await RebornBuddySettingsSession.FlushPendingSavesAsync(CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
-            ff14bot.Helpers.Logging.Write($"[EZBuddy] Queue stop cleanup failed: {exception.Message}");
+            ff14bot.Helpers.Logging.Write($"[EZBuddy] Stop cleanup failed: {exception.Message}");
         }
         finally
         {
