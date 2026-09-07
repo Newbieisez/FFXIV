@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using EZBuddy.Core.Duties;
 using EZBuddy.Core.Licensing;
@@ -245,10 +244,11 @@ public sealed class EZBuddyPlugin : BotPlugin
         CloseRuntimePersistence(markClean: false);
         try
         {
-            var characterKey = SettingsPathSanitizer.Sanitize(ff14bot.Core.Player?.Name ?? "default");
-            var root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Settings", "EZBuddy", "Runtime");
-            var checkpoint = new JsonResumeCheckpointStore(Path.Combine(root, characterKey + ".resume.json"));
-            var replay = new JsonLinesDecisionReplayRecorder(Path.Combine(root, characterKey + ".decisions.jsonl"));
+            var characterName = ff14bot.Core.Player?.Name ?? "default";
+            var characterKey = SettingsPathSanitizer.Sanitize(characterName);
+            var paths = new EZBuddyStoragePaths();
+            var checkpoint = new JsonResumeCheckpointStore(paths.GetRuntimeCheckpointPath(characterName));
+            var replay = new JsonLinesDecisionReplayRecorder(paths.GetDecisionReplayPath(characterName));
             _runtimePersistence = new RuntimePersistenceTelemetrySink(checkpoint, replay);
             EZBuddyRuntime.Telemetry.Register(_runtimePersistence);
             ff14bot.Helpers.Logging.Write($"[EZBuddy Runtime] Resume checkpoint and decision replay enabled for '{characterKey}'.");
