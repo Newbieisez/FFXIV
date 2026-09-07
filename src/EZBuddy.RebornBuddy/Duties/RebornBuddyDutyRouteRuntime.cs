@@ -3,6 +3,7 @@ using EZBuddy.Core.Duties;
 using ff14bot.Managers;
 using ff14bot.Navigation;
 using ff14bot.Objects;
+using ff14bot.Pathing;
 
 namespace EZBuddy.RebornBuddy.Duties;
 
@@ -33,21 +34,14 @@ public sealed class RebornBuddyDutyRouteRecorderSource : IDutyRouteRecorderSourc
             ActiveCasts: casts);
     }
 
-    private DutyInteractionSnapshot? CaptureInteraction(
-        GameObject? target,
-        DutyPoint playerPosition,
-        bool captureInteractionRequested)
+    private DutyInteractionSnapshot? CaptureInteraction(GameObject? target, DutyPoint playerPosition, bool captureInteractionRequested)
     {
         DutyInteractionSnapshot? result = null;
-
         if (captureInteractionRequested && target is not null && target is not BattleCharacter)
         {
             result = ToInteraction(target, playerPosition);
         }
-        else if (target is null &&
-                 _previousNonCombatTargetNpcId != 0 &&
-                 _previousNonCombatTargetWasTargetable &&
-                 _previousNonCombatTargetWasNear)
+        else if (target is null && _previousNonCombatTargetNpcId != 0 && _previousNonCombatTargetWasTargetable && _previousNonCombatTargetWasNear)
         {
             result = new DutyInteractionSnapshot(
                 _previousNonCombatTargetNpcId,
@@ -59,9 +53,7 @@ public sealed class RebornBuddyDutyRouteRecorderSource : IDutyRouteRecorderSourc
         }
         else if (target is not null && target is not BattleCharacter &&
                  target.NpcId == _previousNonCombatTargetNpcId &&
-                 _previousNonCombatTargetWasTargetable &&
-                 !target.IsTargetable &&
-                 _previousNonCombatTargetWasNear)
+                 _previousNonCombatTargetWasTargetable && !target.IsTargetable && _previousNonCombatTargetWasNear)
         {
             result = ToInteraction(target, playerPosition);
         }
@@ -82,10 +74,7 @@ public sealed class RebornBuddyDutyRouteRecorderSource : IDutyRouteRecorderSourc
         return result;
     }
 
-    private static IReadOnlyList<DutyCastSnapshot> CaptureCasts(
-        bool inCombat,
-        GameObject? currentTarget,
-        DutyPoint playerPosition)
+    private static IReadOnlyList<DutyCastSnapshot> CaptureCasts(bool inCombat, GameObject? currentTarget, DutyPoint playerPosition)
     {
         if (!inCombat || currentTarget is not BattleCharacter target || !target.IsCasting)
         {
@@ -131,31 +120,10 @@ public sealed class RebornBuddyDutyRouteRecorderSource : IDutyRouteRecorderSourc
 
     private static DutyObjectiveKind Classify(string name)
     {
-        if (name.Contains("coffer", StringComparison.OrdinalIgnoreCase) ||
-            name.Contains("chest", StringComparison.OrdinalIgnoreCase))
-        {
-            return DutyObjectiveKind.Chest;
-        }
-
-        if (name.Contains("lift", StringComparison.OrdinalIgnoreCase) ||
-            name.Contains("elevator", StringComparison.OrdinalIgnoreCase))
-        {
-            return DutyObjectiveKind.Lift;
-        }
-
-        if (name.Contains("switch", StringComparison.OrdinalIgnoreCase) ||
-            name.Contains("lever", StringComparison.OrdinalIgnoreCase) ||
-            name.Contains("coral", StringComparison.OrdinalIgnoreCase))
-        {
-            return DutyObjectiveKind.Switch;
-        }
-
-        if (name.Contains("door", StringComparison.OrdinalIgnoreCase) ||
-            name.Contains("gate", StringComparison.OrdinalIgnoreCase))
-        {
-            return DutyObjectiveKind.Door;
-        }
-
+        if (name.Contains("coffer", StringComparison.OrdinalIgnoreCase) || name.Contains("chest", StringComparison.OrdinalIgnoreCase)) return DutyObjectiveKind.Chest;
+        if (name.Contains("lift", StringComparison.OrdinalIgnoreCase) || name.Contains("elevator", StringComparison.OrdinalIgnoreCase)) return DutyObjectiveKind.Lift;
+        if (name.Contains("switch", StringComparison.OrdinalIgnoreCase) || name.Contains("lever", StringComparison.OrdinalIgnoreCase) || name.Contains("coral", StringComparison.OrdinalIgnoreCase)) return DutyObjectiveKind.Switch;
+        if (name.Contains("door", StringComparison.OrdinalIgnoreCase) || name.Contains("gate", StringComparison.OrdinalIgnoreCase)) return DutyObjectiveKind.Door;
         return DutyObjectiveKind.Interact;
     }
 
@@ -191,10 +159,7 @@ public sealed class RebornBuddyDutyObjectiveNodeHost : IDutyObjectiveNodeHost
             player.InCombat);
     }
 
-    public Task<bool> MoveTowardAsync(
-        DutyPoint position,
-        float arrivalRadius,
-        CancellationToken cancellationToken = default)
+    public Task<bool> MoveTowardAsync(DutyPoint position, float arrivalRadius, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Navigator.MoveTo(new MoveToParameters(
@@ -206,9 +171,7 @@ public sealed class RebornBuddyDutyObjectiveNodeHost : IDutyObjectiveNodeHost
         return Task.FromResult(true);
     }
 
-    public Task<DutyInteractableState?> FindInteractableAsync(
-        uint objectId,
-        CancellationToken cancellationToken = default)
+    public Task<DutyInteractableState?> FindInteractableAsync(uint objectId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var player = ff14bot.Core.Me;
@@ -240,9 +203,7 @@ public sealed class RebornBuddyDutyObjectiveNodeHost : IDutyObjectiveNodeHost
         return Task.FromResult(true);
     }
 
-    public Task<bool> FaceAndInteractAsync(
-        uint objectId,
-        CancellationToken cancellationToken = default)
+    public Task<bool> FaceAndInteractAsync(uint objectId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var target = GameObjectManager.GetObjectsByNPCId<GameObject>(objectId)
