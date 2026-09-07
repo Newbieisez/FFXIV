@@ -2,6 +2,7 @@ using EZBuddy.Core.Adapters;
 using EZBuddy.Core.Engine;
 using EZBuddy.Core.Routines;
 using EZBuddy.Core.Runtime;
+using EZBuddy.RebornBuddy.Adapters;
 using ff14bot.Managers;
 
 namespace EZBuddy.RebornBuddy.Routines;
