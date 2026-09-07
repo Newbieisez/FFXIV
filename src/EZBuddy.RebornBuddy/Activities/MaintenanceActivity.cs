@@ -6,7 +6,9 @@ namespace EZBuddy.RebornBuddy.Activities;
 
 public sealed record MaintenanceOptions(
     int MinimumFreeInventorySlots = 6,
+    bool AutoRepairGear = true,
     int RepairBelowPercent = 30,
+    bool AutoExtractMateria = true,
     uint FoodItemId = 0,
     bool RequireWellFed = false,
     bool AllowMenderFallback = true)
@@ -38,6 +40,8 @@ public sealed class MaintenanceActivity : IEZActivity
     private bool _complete;
     private bool _repairAttempted;
     private bool _foodAttempted;
+    private bool _materiaExtractionAttempted;
+    private bool _materiaExtractionSucceeded;
 
     public MaintenanceActivity(ILisbethAdapter lisbeth, MaintenanceOptions? options = null)
     {
@@ -68,7 +72,18 @@ public sealed class MaintenanceActivity : IEZActivity
                 $"Inventory safety gate: {freeSlots} free slots; {_options.MinimumFreeInventorySlots} required. Clear inventory before continuing.");
         }
 
-        var repairNeeded = InventoryManager.EquippedItems.Any(item =>
+        if (_options.AutoExtractMateria && !_materiaExtractionAttempted)
+        {
+            _materiaExtractionAttempted = true;
+            _materiaExtractionSucceeded = await _lisbeth.ExtractMateriaAsync(cancellationToken).ConfigureAwait(false);
+            if (_materiaExtractionSucceeded)
+            {
+                return ExecutionResult.Continue(
+                    "Materia extraction pass completed through Lisbeth; eligible 100% spiritbond items were processed before longer work begins.");
+            }
+        }
+
+        var repairNeeded = _options.AutoRepairGear && InventoryManager.EquippedItems.Any(item =>
             item.Item is not null &&
             item.Item.RepairItemId != 0 &&
             item.Condition < _options.RepairBelowPercent);
@@ -113,7 +128,14 @@ public sealed class MaintenanceActivity : IEZActivity
         }
 
         _complete = true;
-        return ExecutionResult.Complete($"Maintenance ready: {freeSlots} free inventory slots, durability acceptable{(_options.RequireWellFed ? ", Well Fed active" : string.Empty)}.");
+        var materiaStatus = !_options.AutoExtractMateria
+            ? "materia extraction disabled"
+            : _materiaExtractionSucceeded
+                ? "materia extraction pass complete"
+                : "no materia extracted or Lisbeth extraction unavailable";
+
+        return ExecutionResult.Complete(
+            $"Maintenance ready: {freeSlots} free inventory slots, repair policy satisfied, {materiaStatus}{(_options.RequireWellFed ? ", Well Fed active" : string.Empty)}.");
     }
 
     public Task OnHaltAsync(CancellationToken cancellationToken = default)
