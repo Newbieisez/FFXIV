@@ -1,0 +1,136 @@
+<Window x:Class="EZBuddy.UI.Views.ProductIntelligenceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="EZBuddy Product Intelligence"
+        Width="1180" Height="760"
+        MinWidth="980" MinHeight="620"
+        WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="../Themes/EZBuddyTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Border Background="{StaticResource BackgroundBrush}" Padding="16">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="PRODUCT INTELLIGENCE" Style="{StaticResource CaptionStyle}"/>
+                    <TextBlock Text="Preflight · Dry Run · Goal Planner" FontSize="22" FontWeight="SemiBold" Margin="0,3,0,0"/>
+                    <TextBlock Text="Simulates and explains EZBuddy decisions without starting the activity queue."
+                               Foreground="{StaticResource TextMutedBrush}" FontSize="10" Margin="0,3,0,0"/>
+                </StackPanel>
+                <Border Grid.Column="1" Padding="12,7" CornerRadius="12" Background="#152C35" BorderBrush="#275568" BorderThickness="1">
+                    <TextBlock Text="{Binding OverallState}" Foreground="{StaticResource CrystalBlueBrush}" FontWeight="SemiBold"/>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="1" Style="{StaticResource GoldCardStyle}" Margin="0,12,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="180"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="GOAL TYPE" Style="{StaticResource CaptionStyle}"/>
+                        <ComboBox ItemsSource="{Binding GoalTypes}" SelectedItem="{Binding SelectedGoalType}" Margin="0,4,10,0" Padding="6"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="GOAL / SUBJECT" Style="{StaticResource CaptionStyle}"/>
+                        <TextBox Text="{Binding GoalSubject, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,10,0" Padding="8,6"/>
+                    </StackPanel>
+                    <Button Grid.Column="2" Content="Analyze / Simulate" Command="{Binding RefreshCommand}" Style="{StaticResource PrimaryButtonStyle}" VerticalAlignment="Bottom"/>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="1*"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="PREFLIGHT" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8"/>
+                        <ListBox ItemsSource="{Binding PreflightChecks}" Style="{StaticResource CompactListBoxStyle}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="2,4">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Severity}" Foreground="{StaticResource GoldBrush}" FontSize="10"/>
+                                        <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" FontSize="9"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="DRY RUN" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8"/>
+                        <ListBox ItemsSource="{Binding DryRunActions}" Style="{StaticResource CompactListBoxStyle}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="2,4">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Disposition}" Foreground="{StaticResource GoldBrush}" FontSize="10"/>
+                                        <TextBlock Text="{Binding Explanation}" TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" FontSize="9"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+
+                <Border Grid.Column="4" Style="{StaticResource CardStyle}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="GOAL PLAN" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8"/>
+                        <ListBox ItemsSource="{Binding GoalSteps}" Style="{StaticResource CompactListBoxStyle}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="2,4">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding CapabilityKey}" Foreground="{StaticResource GoldBrush}" FontSize="10"/>
+                                        <TextBlock Text="{Binding Reason}" TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" FontSize="9"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="STATUS / RECOMMENDATIONS" Style="{StaticResource CaptionStyle}"/>
+                    <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Margin="0,4,0,6"/>
+                    <ItemsControl ItemsSource="{Binding Recommendations}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding StringFormat=• {0}}" Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

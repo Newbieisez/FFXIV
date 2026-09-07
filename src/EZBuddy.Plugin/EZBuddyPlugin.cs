@@ -9,6 +9,7 @@ using EZBuddy.RebornBuddy.Duties;
 using EZBuddy.RebornBuddy.Licensing;
 using EZBuddy.RebornBuddy.Settings;
 using EZBuddy.UI;
+using EZBuddy.UI.ViewModels;
 using ff14bot.AClasses;
 
 namespace EZBuddy.Plugin;
@@ -34,17 +35,19 @@ public sealed class EZBuddyPlugin : BotPlugin
     {
         RegisterAdapters();
         DutyRouteRecorderRuntime.Configure(new RebornBuddyDutyRouteRecorderController());
+        ProductIntelligenceRuntime.Provider = new RebornBuddyProductIntelligenceProvider();
         InitializeLicensing();
         InitializeNotifications();
         _ = RebornBuddySettingsSession.GetOrCreate();
         LicenseRuntime.LicenseRequired += OnLicenseRequired;
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin initialized. Shared runtime, per-character settings, adapters, licensing, route recorder, and optional notifications registered.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin initialized. Shared runtime, per-character settings, adapters, licensing, route recorder, Product Intelligence, and optional notifications registered.");
     }
 
     public override void OnEnabled()
     {
         RegisterAdapters();
         DutyRouteRecorderRuntime.Configure(new RebornBuddyDutyRouteRecorderController());
+        ProductIntelligenceRuntime.Provider = new RebornBuddyProductIntelligenceProvider();
         _ = RebornBuddySettingsSession.GetOrCreate();
 
         if (_licenseManager is null)
@@ -78,6 +81,7 @@ public sealed class EZBuddyPlugin : BotPlugin
     {
         LicenseRuntime.LicenseRequired -= OnLicenseRequired;
         DutyRouteRecorderRuntime.Configure(null);
+        ProductIntelligenceRuntime.Provider = null;
         CloseDashboard();
         EZBuddyRuntime.Queue.Pause();
 
@@ -100,7 +104,7 @@ public sealed class EZBuddyPlugin : BotPlugin
         _discordNotificationSink = null;
         _onlineLicenseClient?.Dispose();
         _onlineLicenseClient = null;
-        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; activity engine paused, settings flushed, route recorder released, and optional integrations released.");
+        ff14bot.Helpers.Logging.Write("[EZBuddy] Plugin shutdown; activity engine paused, settings flushed, route recorder/Product Intelligence released, and optional integrations released.");
     }
 
     public override void OnButtonPress() => OpenDashboard(navigateToLicense: false);
