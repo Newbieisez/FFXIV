@@ -151,20 +151,6 @@ public sealed class EZBuddyPlugin : BotPlugin
                 return;
             }
 
-            _discordWebhookNotificationSink?.Dispose();
-        }
-        catch
-        {
-            // Backward-compatible source guard; initialization below owns the real sink fields.
-        }
-
-        try
-        {
-            if (!Uri.TryCreate(webhookText, UriKind.Absolute, out var webhookUri))
-            {
-                return;
-            }
-
             _discordNotificationSink?.Dispose();
             _discordNotificationSink = new DiscordWebhookNotificationSink(webhookUri);
             _notificationTelemetrySink = new NotificationActivityTelemetrySink(_discordNotificationSink);
@@ -179,8 +165,6 @@ public sealed class EZBuddyPlugin : BotPlugin
             _discordNotificationSink = null;
         }
     }
-
-    private DiscordWebhookNotificationSink? _discordWebhookNotificationSink => _discordNotificationSink;
 
     private void QueueSavedFirstPlayableLoop()
     {
