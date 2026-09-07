@@ -34,6 +34,12 @@ public sealed class EZBuddyBotBase : ff14bot.AClasses.BotBase
 
     public override void Stop()
     {
+        if (HostLifecycleTransition.IsInternalTransition)
+        {
+            ff14bot.Helpers.Logging.Write("[EZBuddy] Internal botbase handoff detected; queue state and active activity were preserved.");
+            return;
+        }
+
         var cancellation = Interlocked.Exchange(ref _runCancellation, null);
         cancellation?.Cancel();
 
