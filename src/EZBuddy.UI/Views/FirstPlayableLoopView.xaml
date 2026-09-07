@@ -22,7 +22,7 @@
                     <StackPanel>
                         <TextBlock Text="FIRST PLAYABLE LOOP" Style="{StaticResource CaptionStyle}"/>
                         <TextBlock Text="Configure &amp; Run EZBuddy" FontSize="22" FontWeight="SemiBold" Margin="0,3,0,0"/>
-                        <TextBlock Text="Maintenance → Retainers → Inventory Relief → Daily Progression → Duty Support / Trust → Idle"
+                        <TextBlock Text="Maintenance → Retainers → Inventory Relief → Reset-Aware Routines → Daily Progression → Duty Support / Trust → Idle"
                                    Foreground="{StaticResource TextMutedBrush}" FontSize="11" Margin="0,3,0,0"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
@@ -228,6 +228,52 @@
                         </StackPanel>
                     </Border>
                 </Grid>
+
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="RESET-AWARE DAILY &amp; WEEKLY ROUTINES" Style="{StaticResource SectionTitleStyle}"/>
+                        <TextBlock Text="These routines are opt-in, tracked per character, and only requeue after their FFXIV daily/weekly reset. A failed or ambiguous destructive pass is not automatically repeated."
+                                   Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,6,0,10"/>
+
+                        <WrapPanel Margin="0,0,0,10">
+                            <CheckBox Content="Daily GC Expert Delivery" IsChecked="{Binding FirstLoop.RunGrandCompanyExpertDeliveryDaily}" Margin="0,0,22,6"/>
+                            <CheckBox Content="Daily Venture Refill" IsChecked="{Binding FirstLoop.RunVentureRefillDaily}" Margin="0,0,22,6"/>
+                            <CheckBox Content="Weekly Custom Deliveries" IsChecked="{Binding FirstLoop.RunCustomDeliveriesWeekly}" Margin="0,0,22,6"/>
+                        </WrapPanel>
+
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="1*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="1.5*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="VENTURE MINIMUM" Style="{StaticResource CaptionStyle}"/>
+                                <TextBox Text="{Binding FirstLoop.VentureMinimumQuantity, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0" Padding="8,6"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="VENTURE TARGET" Style="{StaticResource CaptionStyle}"/>
+                                <TextBox Text="{Binding FirstLoop.VentureTargetQuantity, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0" Padding="8,6"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="CUSTOM DELIVERY CRAFTING CLASS" Style="{StaticResource CaptionStyle}"/>
+                                <ComboBox ItemsSource="{Binding FirstLoop.CustomDeliveryCraftingClasses}"
+                                          SelectedItem="{Binding FirstLoop.CustomDeliveryCraftingClass, Mode=TwoWay}"
+                                          Margin="0,4,0,0" Padding="6"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="CUSTOM DELIVERY CLIENT KEYS" Style="{StaticResource CaptionStyle}"/>
+                        <TextBox Text="{Binding FirstLoop.CustomDeliveryClientKeys, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="0,4,0,4" Padding="8,6" TextWrapping="Wrap"/>
+                        <TextBlock Text="Comma-separated selection: zhloe-aliapoh, mnaago, kurenai, adkiragh, kaishirr, ehll-tou, charlemend, ameliance, anden, margrat, nitowikwe, tiisol-ja. Only selected clients are passed to the Llama workflow."
+                                   Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        <TextBlock Text="Daily GC Expert Delivery requires the approved item-ID allowlist above. If both GC Daily and Venture Refill are enabled, Venture Refill will not run a second Expert Delivery fallback in the same loop."
+                                   Foreground="{StaticResource TextMutedBrush}" FontSize="9" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
 
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel>
