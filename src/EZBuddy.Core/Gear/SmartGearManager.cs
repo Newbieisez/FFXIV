@@ -42,7 +42,7 @@ public sealed record GearItemSnapshot(
     string Name,
     GearSlot Slot,
     int ItemLevel,
-    IReadOnlySet<string> SupportedJobs,
+    IReadOnlyCollection<string> SupportedJobs,
     GearStorageLocation Location,
     IReadOnlyDictionary<string, int>? Stats = null,
     bool IsEquipped = false,
@@ -52,7 +52,11 @@ public sealed record GearItemSnapshot(
     bool CanSell = false,
     bool IsUnique = false,
     bool IsHighQuality = false,
-    int MateriaCount = 0);
+    int MateriaCount = 0)
+{
+    public bool SupportsJob(string jobKey)
+        => SupportedJobs.Any(job => string.Equals(job, jobKey, StringComparison.OrdinalIgnoreCase));
+}
 
 public sealed record GearScoreProfile(
     string JobKey,
@@ -120,7 +124,7 @@ public static class SmartGearManager
 
         var all = items.ToArray();
         var eligible = all
-            .Where(item => item.SupportedJobs.Contains(scoreProfile.JobKey))
+            .Where(item => item.SupportsJob(scoreProfile.JobKey))
             .ToArray();
 
         var bestBySlot = eligible
@@ -146,7 +150,7 @@ public static class SmartGearManager
                 continue;
             }
 
-            if (bestIds.Contains(item.ItemId) && item.SupportedJobs.Contains(scoreProfile.JobKey))
+            if (bestIds.Contains(item.ItemId) && item.SupportsJob(scoreProfile.JobKey))
             {
                 recommendations.Add(new GearRecommendation(item, GearDisposition.EquipBest, score,
                     $"Highest-scoring owned {item.Slot} for {scoreProfile.JobKey}."));
