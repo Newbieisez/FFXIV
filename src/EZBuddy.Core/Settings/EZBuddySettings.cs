@@ -29,7 +29,14 @@ public sealed record FirstPlayableLoopSettings(
     IReadOnlyList<uint>? ApprovedExpertDeliveryItemIds = null,
     uint DutyTerritoryId = 0,
     DutyLootAction DutyLootAction = DutyLootAction.Greed,
-    int DutyLootPassAtOrBelowFreeSlots = 3)
+    int DutyLootPassAtOrBelowFreeSlots = 3,
+    bool RunGrandCompanyExpertDeliveryDaily = false,
+    bool RunVentureRefillDaily = false,
+    int VentureMinimumQuantity = 10,
+    int VentureTargetQuantity = 50,
+    bool RunCustomDeliveriesWeekly = false,
+    IReadOnlyList<string>? CustomDeliveryClientKeys = null,
+    string CustomDeliveryCraftingClass = "Carpenter")
 {
     // DutyId is retained for backward-compatible settings JSON. It specifically means
     // the RebornBuddy/Llama queue-registration ID, not the in-instance territory/map ID.
@@ -37,6 +44,13 @@ public sealed record FirstPlayableLoopSettings(
 
     public IReadOnlyList<uint> EffectiveApprovedExpertDeliveryItemIds =>
         ApprovedExpertDeliveryItemIds ?? Array.Empty<uint>();
+
+    public IReadOnlyList<string> EffectiveCustomDeliveryClientKeys =>
+        (CustomDeliveryClientKeys ?? Array.Empty<string>())
+        .Where(key => !string.IsNullOrWhiteSpace(key))
+        .Select(key => key.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
 
     public DutyLootPolicy EffectiveDutyLootPolicy =>
         new(DutyLootAction, DutyLootPassAtOrBelowFreeSlots);
@@ -120,6 +134,29 @@ public sealed record FirstPlayableLoopSettings(
         if (EffectiveApprovedExpertDeliveryItemIds.Any(itemId => itemId == 0))
         {
             errors.Add("Approved Expert Delivery item IDs cannot contain zero.");
+        }
+
+        if (RunGrandCompanyExpertDeliveryDaily && EffectiveApprovedExpertDeliveryItemIds.Count == 0)
+        {
+            errors.Add("Daily Grand Company Expert Delivery requires at least one explicitly approved item ID.");
+        }
+
+        if (VentureMinimumQuantity < 0 || VentureTargetQuantity < VentureMinimumQuantity)
+        {
+            errors.Add("Venture target quantity must be greater than or equal to the non-negative minimum quantity.");
+        }
+
+        if (RunCustomDeliveriesWeekly)
+        {
+            if (EffectiveCustomDeliveryClientKeys.Count == 0)
+            {
+                errors.Add("Weekly Custom Deliveries requires at least one explicitly selected client.");
+            }
+
+            if (string.IsNullOrWhiteSpace(CustomDeliveryCraftingClass))
+            {
+                errors.Add("Weekly Custom Deliveries requires a crafting class.");
+            }
         }
 
         return errors;
