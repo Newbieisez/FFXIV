@@ -108,7 +108,12 @@ public sealed record GearRecommendation(
 public sealed record GearPlan(
     string JobKey,
     IReadOnlyDictionary<GearSlot, GearItemSnapshot> BestBySlot,
-    IReadOnlyList<GearRecommendation> Recommendations);
+    IReadOnlyList<GearRecommendation> Recommendations,
+    IReadOnlyDictionary<GearSlot, GearItemSnapshot>? SecondaryBestBySlot = null)
+{
+    public IReadOnlyDictionary<GearSlot, GearItemSnapshot> EffectiveSecondaryBestBySlot
+        => SecondaryBestBySlot ?? new Dictionary<GearSlot, GearItemSnapshot>();
+}
 
 public static class SmartGearManager
 {
@@ -127,7 +132,7 @@ public static class SmartGearManager
             .Where(item => item.SupportsJob(scoreProfile.JobKey))
             .ToArray();
 
-        var bestBySlot = eligible
+        var rankedBySlot = eligible
             .GroupBy(item => item.Slot)
             .ToDictionary(
                 group => group.Key,
@@ -135,13 +140,26 @@ public static class SmartGearManager
                     .OrderByDescending(scoreProfile.Score)
                     .ThenByDescending(item => item.ItemLevel)
                     .ThenBy(item => item.ItemId)
-                    .First());
+                    .ToArray());
 
-        // Keep the exact selected snapshot instance rather than only ItemId. A player can own
-        // multiple copies of the same item ID, and only the selected copy should be labelled
-        // EquipBest. This also prevents an equipped copy from causing an unequipped duplicate
-        // to inherit the same best-item disposition.
-        var bestItems = bestBySlot.Values.ToArray();
+        var bestBySlot = rankedBySlot
+            .Where(pair => pair.Value.Length > 0)
+            .ToDictionary(pair => pair.Key, pair => pair.Value[0]);
+
+        // Rings occupy two equipment slots. Preserve the existing single BestBySlot contract for
+        // callers while exposing the second selected ring separately. Other slots remain single-slot.
+        var secondaryBestBySlot = new Dictionary<GearSlot, GearItemSnapshot>();
+        if (rankedBySlot.TryGetValue(GearSlot.Ring, out var rings) && rings.Length > 1)
+        {
+            secondaryBestBySlot[GearSlot.Ring] = rings[1];
+        }
+
+        // Keep exact selected snapshot instances rather than only ItemId. A player can own
+        // multiple copies of the same item ID, and only the selected physical copies should be
+        // labelled EquipBest.
+        var selectedItems = bestBySlot.Values
+            .Concat(secondaryBestBySlot.Values)
+            .ToArray();
         var recommendations = new List<GearRecommendation>(all.Length);
 
         foreach (var item in all)
@@ -154,10 +172,12 @@ public static class SmartGearManager
                 continue;
             }
 
-            if (bestItems.Any(best => ReferenceEquals(best, item)) && item.SupportsJob(scoreProfile.JobKey))
+            if (selectedItems.Any(best => ReferenceEquals(best, item)) && item.SupportsJob(scoreProfile.JobKey))
             {
-                recommendations.Add(new GearRecommendation(item, GearDisposition.EquipBest, score,
-                    $"Highest-scoring owned {item.Slot} for {scoreProfile.JobKey}."));
+                var reason = item.Slot == GearSlot.Ring
+                    ? $"One of the two highest-scoring owned rings for {scoreProfile.JobKey}."
+                    : $"Highest-scoring owned {item.Slot} for {scoreProfile.JobKey}.";
+                recommendations.Add(new GearRecommendation(item, GearDisposition.EquipBest, score, reason));
                 continue;
             }
 
@@ -200,6 +220,6 @@ public static class SmartGearManager
                 "Not selected as best-in-slot and no approved disposal rule applies."));
         }
 
-        return new GearPlan(scoreProfile.JobKey, bestBySlot, recommendations);
+        return new GearPlan(scoreProfile.JobKey, bestBySlot, recommendations, secondaryBestBySlot);
     }
 }
