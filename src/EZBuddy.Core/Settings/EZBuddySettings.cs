@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using EZBuddy.Core.Adapters;
+using EZBuddy.Core.Duties;
 
 namespace EZBuddy.Core.Settings;
 
@@ -25,10 +26,20 @@ public sealed record FirstPlayableLoopSettings(
     bool RunDailyProgression = true,
     bool RunDutyLoop = true,
     bool ReturnToIdle = true,
-    IReadOnlyList<uint>? ApprovedExpertDeliveryItemIds = null)
+    IReadOnlyList<uint>? ApprovedExpertDeliveryItemIds = null,
+    uint DutyTerritoryId = 0,
+    DutyLootAction DutyLootAction = DutyLootAction.Greed,
+    int DutyLootPassAtOrBelowFreeSlots = 3)
 {
+    // DutyId is retained for backward-compatible settings JSON. It specifically means
+    // the RebornBuddy/Llama queue-registration ID, not the in-instance territory/map ID.
+    public uint QueueDutyId => DutyId;
+
     public IReadOnlyList<uint> EffectiveApprovedExpertDeliveryItemIds =>
         ApprovedExpertDeliveryItemIds ?? Array.Empty<uint>();
+
+    public DutyLootPolicy EffectiveDutyLootPolicy =>
+        new(DutyLootAction, DutyLootPassAtOrBelowFreeSlots);
 
     public IReadOnlyList<string> Validate(bool requireDutyProfileExists = false)
     {
@@ -36,9 +47,9 @@ public sealed record FirstPlayableLoopSettings(
 
         if (RunDutyLoop)
         {
-            if (DutyId == 0)
+            if (QueueDutyId == 0)
             {
-                errors.Add("Select a Duty Support/Trust duty before running the loop.");
+                errors.Add("Select a Duty Support/Trust queue registration ID before running the loop.");
             }
 
             if (string.IsNullOrWhiteSpace(DutyProfilePath))
@@ -63,6 +74,16 @@ public sealed record FirstPlayableLoopSettings(
             if (MaxRuns is < 1 or > 1000)
             {
                 errors.Add("Maximum duty runs must be between 1 and 1000.");
+            }
+
+            if (!Enum.IsDefined(DutyLootAction))
+            {
+                errors.Add("Duty loot action is invalid.");
+            }
+
+            if (DutyLootPassAtOrBelowFreeSlots is < 0 or > 140)
+            {
+                errors.Add("Duty loot pass-at free-slot threshold must be between 0 and 140.");
             }
         }
 
