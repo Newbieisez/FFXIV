@@ -36,6 +36,7 @@ public interface ILisbethAdapter : IEZAdapter
     Task<bool> ExecuteOrdersAsync(string ordersJson, CancellationToken cancellationToken = default);
     Task<bool> ExitCraftingAsync(CancellationToken cancellationToken = default);
     Task<bool> SelfRepairAsync(bool allowMenderFallback, CancellationToken cancellationToken = default);
+    Task<bool> ExtractMateriaAsync(CancellationToken cancellationToken = default);
     Task<bool> TravelAsync(uint zoneId, float x, float y, float z, bool land = true, CancellationToken cancellationToken = default);
 }
 
