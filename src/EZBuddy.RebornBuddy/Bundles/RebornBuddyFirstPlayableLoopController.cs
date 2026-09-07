@@ -1,11 +1,13 @@
 using EZBuddy.Core.Adapters;
 using EZBuddy.Core.Bundles;
+using EZBuddy.Core.Diagnostics;
 using EZBuddy.Core.Duties;
 using EZBuddy.Core.Engine;
 using EZBuddy.Core.Licensing;
 using EZBuddy.Core.Runtime;
 using EZBuddy.Core.Settings;
 using EZBuddy.RebornBuddy.Activities;
+using EZBuddy.RebornBuddy.Diagnostics;
 
 namespace EZBuddy.RebornBuddy.Bundles;
 
@@ -29,6 +31,18 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
         if (validationErrors.Count > 0)
         {
             return FirstPlayableLoopStartResult.Rejected(string.Join(" ", validationErrors));
+        }
+
+        var conflicts = await new RebornBuddyConflictPreflight()
+            .ScanAsync(settings, cancellationToken)
+            .ConfigureAwait(false);
+        var criticalConflicts = conflicts
+            .Where(finding => finding.Severity == ConflictSeverity.Critical && finding.ShouldPause)
+            .ToArray();
+        if (criticalConflicts.Length > 0)
+        {
+            return FirstPlayableLoopStartResult.Rejected(
+                $"EZBuddy conflict pre-flight blocked this loop: {RebornBuddyConflictPreflight.Summarize(criticalConflicts)}");
         }
 
         var queue = EZBuddyRuntime.Queue;
@@ -67,8 +81,11 @@ public sealed class RebornBuddyFirstPlayableLoopController : IFirstPlayableLoopC
 
             await EZBuddyRuntime.RunLoop.StartAsync(cancellationToken).ConfigureAwait(false);
 
+            var advisory = conflicts.Count == 0
+                ? string.Empty
+                : $" Advisory conflicts: {RebornBuddyConflictPreflight.Summarize(conflicts)}";
             return FirstPlayableLoopStartResult.Started(
-                $"Queued {plan.StageNames.Count} stage(s): {string.Join(" -> ", plan.StageNames)}. The EZBuddy BotBase will consume the start signal on its next pulse.",
+                $"Queued {plan.StageNames.Count} stage(s): {string.Join(" -> ", plan.StageNames)}. The EZBuddy BotBase will consume the start signal on its next pulse.{advisory}",
                 plan.StageNames);
         }
         catch (Exception exception)
