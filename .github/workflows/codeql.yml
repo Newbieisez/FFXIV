@@ -17,7 +17,7 @@ permissions:
 jobs:
   analyze:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -34,6 +34,12 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Restore core
+        run: dotnet restore src/EZBuddy.Core/EZBuddy.Core.csproj
+
+      - name: Restore UI
+        run: dotnet restore src/EZBuddy.UI/EZBuddy.UI.csproj
+
       - name: Restore plugin
         run: dotnet restore src/EZBuddy.Plugin/EZBuddy.Plugin.csproj
 
@@ -42,6 +48,12 @@ jobs:
 
       - name: Restore license issuer
         run: dotnet restore tools/EZBuddy.LicenseIssuer/EZBuddy.LicenseIssuer.csproj
+
+      - name: Build core
+        run: dotnet build src/EZBuddy.Core/EZBuddy.Core.csproj -c Release --no-restore
+
+      - name: Build UI
+        run: dotnet build src/EZBuddy.UI/EZBuddy.UI.csproj -c Release --no-restore -p:Platform=x64
 
       - name: Build plugin
         run: dotnet build src/EZBuddy.Plugin/EZBuddy.Plugin.csproj -c Release --no-restore -p:Platform=x64
