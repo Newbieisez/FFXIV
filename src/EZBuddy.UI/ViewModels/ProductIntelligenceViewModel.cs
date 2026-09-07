@@ -12,11 +12,25 @@ public sealed record ProductIntelligenceUpdate(
     GoalPlan Goal,
     IReadOnlyList<string> Recommendations);
 
+public sealed record ProductActionResult(
+    bool Success,
+    string Message,
+    IReadOnlyList<string>? Warnings = null)
+{
+    public IReadOnlyList<string> EffectiveWarnings => Warnings ?? Array.Empty<string>();
+}
+
 public interface IProductIntelligenceProvider
 {
     Task<ProductIntelligenceUpdate> EvaluateAsync(
         GoalType goalType,
         string subject,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IProductIntelligenceActionProvider
+{
+    Task<ProductActionResult> QueueSafeGearUpgradesAsync(
         CancellationToken cancellationToken = default);
 }
 
@@ -28,6 +42,7 @@ public static class ProductIntelligenceRuntime
 public sealed class ProductIntelligenceViewModel : ObservableObject
 {
     private readonly IProductIntelligenceProvider? _provider;
+    private readonly IProductIntelligenceActionProvider? _actionProvider;
     private GoalType _selectedGoalType = GoalType.WeeklyChores;
     private string _goalSubject = "My character";
     private string _overallState = "NOT EVALUATED";
@@ -37,7 +52,11 @@ public sealed class ProductIntelligenceViewModel : ObservableObject
     public ProductIntelligenceViewModel(IProductIntelligenceProvider? provider = null)
     {
         _provider = provider ?? ProductIntelligenceRuntime.Provider;
+        _actionProvider = _provider as IProductIntelligenceActionProvider;
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
+        QueueSafeGearUpgradesCommand = new AsyncRelayCommand(
+            QueueSafeGearUpgradesAsync,
+            () => _actionProvider is not null);
         PreflightChecks = [];
         DryRunActions = [];
         GoalSteps = [];
@@ -50,6 +69,7 @@ public sealed class ProductIntelligenceViewModel : ObservableObject
     public ObservableCollection<GoalStep> GoalSteps { get; }
     public ObservableCollection<string> Recommendations { get; }
     public ICommand RefreshCommand { get; }
+    public ICommand QueueSafeGearUpgradesCommand { get; }
 
     public GoalType SelectedGoalType
     {
@@ -111,6 +131,30 @@ public sealed class ProductIntelligenceViewModel : ObservableObject
         finally
         {
             _refreshing = false;
+        }
+    }
+
+    private async Task QueueSafeGearUpgradesAsync()
+    {
+        if (_actionProvider is null)
+        {
+            StatusMessage = "Safe Smart Gear queue actions are unavailable in this host.";
+            return;
+        }
+
+        try
+        {
+            var result = await _actionProvider.QueueSafeGearUpgradesAsync().ConfigureAwait(true);
+            StatusMessage = result.Message;
+
+            foreach (var warning in result.EffectiveWarnings.Reverse())
+            {
+                Recommendations.Insert(0, $"Smart Gear Queue: {warning}");
+            }
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = $"Smart Gear queue action failed: {exception.Message}";
         }
     }
 
