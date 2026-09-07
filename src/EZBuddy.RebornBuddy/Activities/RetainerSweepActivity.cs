@@ -82,7 +82,7 @@ public sealed class RetainerSweepActivity : IEZActivity
             return false;
         }
 
-        var status = await _retainerAdapter.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+        var status = await _retainerAdapter.GetStatusAsync(cancellationToken);
         return status.Health is AdapterHealth.Ready or AdapterHealth.Busy;
     }
 
@@ -105,7 +105,7 @@ public sealed class RetainerSweepActivity : IEZActivity
         var ventureTokens = GetInventoryQuantity(_options.VentureItemId);
         if (ventureTokens < _options.MinimumVentureTokens)
         {
-            var refillResult = await TryRefillVentureTokensAsync(ventureTokens, cancellationToken).ConfigureAwait(false);
+            var refillResult = await TryRefillVentureTokensAsync(ventureTokens, cancellationToken);
             if (!refillResult.Success)
             {
                 return ExecutionResult.Block(refillResult.Message);
@@ -122,7 +122,7 @@ public sealed class RetainerSweepActivity : IEZActivity
         await using var lease = await _bellCoordinator.TryAcquireAsync(
             "retainer-venture-sweep",
             _options.EffectiveBellLeaseTimeout,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
 
         if (lease is null)
         {
@@ -131,14 +131,14 @@ public sealed class RetainerSweepActivity : IEZActivity
 
         if (_bellAccess is not null)
         {
-            var bellResult = await _bellAccess.EnsureBellOpenAsync(cancellationToken).ConfigureAwait(false);
+            var bellResult = await _bellAccess.EnsureBellOpenAsync(cancellationToken);
             if (!bellResult.Success)
             {
                 return ExecutionResult.Retry(bellResult.Message, TimeSpan.FromSeconds(3));
             }
         }
 
-        var succeeded = await _retainerAdapter.SweepCompletedVenturesAsync(cancellationToken).ConfigureAwait(false);
+        var succeeded = await _retainerAdapter.SweepCompletedVenturesAsync(cancellationToken);
         if (!succeeded)
         {
             return ExecutionResult.Retry("Retainer sweep bridge did not complete successfully.", TimeSpan.FromSeconds(3));
@@ -164,7 +164,7 @@ public sealed class RetainerSweepActivity : IEZActivity
             return (false, $"Only {currentQuantity} Venture tokens remain; {_options.MinimumVentureTokens} are required and no Grand Company refill adapter is configured.");
         }
 
-        var status = await _grandCompanyAdapter.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+        var status = await _grandCompanyAdapter.GetStatusAsync(cancellationToken);
         if (status.Health is not (AdapterHealth.Ready or AdapterHealth.Degraded))
         {
             return (false, $"Venture tokens are below the safety floor and the Grand Company refill bridge is unavailable: {status.Message}");
@@ -174,7 +174,7 @@ public sealed class RetainerSweepActivity : IEZActivity
                 _options.VentureItemId,
                 currentQuantity,
                 _options.TargetVentureTokens,
-                cancellationToken).ConfigureAwait(false))
+                cancellationToken))
         {
             return (true, "Venture tokens refilled from existing Grand Company seals.");
         }
@@ -186,7 +186,7 @@ public sealed class RetainerSweepActivity : IEZActivity
                 "Venture-token purchase failed and no explicitly approved Expert Delivery item IDs are configured. EZBuddy will not hand in inventory automatically without an allowlist.");
         }
 
-        var delivered = await _grandCompanyAdapter.RunExpertDeliveryAsync(approvedItems, cancellationToken).ConfigureAwait(false);
+        var delivered = await _grandCompanyAdapter.RunExpertDeliveryAsync(approvedItems, cancellationToken);
         if (!delivered)
         {
             return (false, "Grand Company Expert Delivery did not complete successfully; Venture-token refill was stopped.");
@@ -197,7 +197,7 @@ public sealed class RetainerSweepActivity : IEZActivity
             _options.VentureItemId,
             refreshedQuantity,
             _options.TargetVentureTokens,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
 
         return purchased
             ? (true, "Approved Expert Delivery items were exchanged and Venture tokens were refilled.")
