@@ -35,6 +35,7 @@ public sealed class SmartGearEquipActivityTests
     [Fact]
     public async Task ActivityAppliesOneUpgradePerStepAndCompletes()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var adapter = new FakeGearEquipmentAdapter();
         var plan = new SmartGearEquipPlan(
             [
@@ -44,14 +45,14 @@ public sealed class SmartGearEquipActivityTests
             Array.Empty<string>());
         var activity = new SmartGearEquipActivity(adapter, plan);
 
-        Assert.True(await activity.CanExecuteAsync());
+        Assert.True(await activity.CanExecuteAsync(cancellationToken));
 
-        var first = await activity.ExecuteStepAsync();
+        var first = await activity.ExecuteStepAsync(cancellationToken);
         Assert.Equal(ExecutionDisposition.Continue, first.Disposition);
         Assert.Equal(1, activity.AppliedCount);
         Assert.False(activity.IsComplete);
 
-        var second = await activity.ExecuteStepAsync();
+        var second = await activity.ExecuteStepAsync(cancellationToken);
         Assert.Equal(ExecutionDisposition.Complete, second.Disposition);
         Assert.Equal(2, activity.AppliedCount);
         Assert.True(activity.IsComplete);
@@ -61,12 +62,13 @@ public sealed class SmartGearEquipActivityTests
     [Fact]
     public async Task ActivityRetriesWithoutAdvancingWhenEquipFails()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var adapter = new FakeGearEquipmentAdapter { EquipResult = false };
         var activity = new SmartGearEquipActivity(
             adapter,
             new SmartGearEquipPlan([Instruction(101, GearSlot.Body, "Body")], Array.Empty<string>()));
 
-        var result = await activity.ExecuteStepAsync();
+        var result = await activity.ExecuteStepAsync(cancellationToken);
 
         Assert.Equal(ExecutionDisposition.Retry, result.Disposition);
         Assert.Equal(0, activity.AppliedCount);
@@ -76,13 +78,14 @@ public sealed class SmartGearEquipActivityTests
     [Fact]
     public async Task ActivityWaitsWhenAdapterIsBusy()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var adapter = new FakeGearEquipmentAdapter { Health = AdapterHealth.Busy };
         var activity = new SmartGearEquipActivity(
             adapter,
             new SmartGearEquipPlan([Instruction(101, GearSlot.Body, "Body")], Array.Empty<string>()));
 
-        Assert.False(await activity.CanExecuteAsync());
-        var result = await activity.ExecuteStepAsync();
+        Assert.False(await activity.CanExecuteAsync(cancellationToken));
+        var result = await activity.ExecuteStepAsync(cancellationToken);
 
         Assert.Equal(ExecutionDisposition.Yield, result.Disposition);
         Assert.Empty(adapter.EquippedItemIds);
