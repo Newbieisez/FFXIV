@@ -1,4 +1,3 @@
-using System.Reflection;
 using EZBuddy.Core.Collections;
 using EZBuddy.Core.Economy;
 using EZBuddy.Core.Gear;
@@ -6,6 +5,7 @@ using EZBuddy.Core.Materia;
 using EZBuddy.Core.Procurement;
 using EZBuddy.Core.Product;
 using EZBuddy.Core.Settings;
+using EZBuddy.RebornBuddy.Interop;
 using ff14bot.Enums;
 using ff14bot.Managers;
 using ff14bot.Objects;
@@ -112,8 +112,8 @@ public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollec
 
     private static IReadOnlyList<CurrencySnapshot> CaptureCurrencies()
     {
-        if (!TryInvokeOptionalLlama(LlamaLocalPlayerExtensionsType, "GCSeals", [ff14bot.Core.Me], out var sealsValue) ||
-            !TryInvokeOptionalLlama(LlamaLocalPlayerExtensionsType, "MaxGCSeals", [ff14bot.Core.Me], out var maxValue))
+        if (!OptionalRuntimeInterop.TryInvokeStatic(LlamaLocalPlayerExtensionsType, "GCSeals", [ff14bot.Core.Me], out var sealsValue) ||
+            !OptionalRuntimeInterop.TryInvokeStatic(LlamaLocalPlayerExtensionsType, "MaxGCSeals", [ff14bot.Core.Me], out var maxValue))
         {
             return Array.Empty<CurrencySnapshot>();
         }
@@ -192,7 +192,7 @@ public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollec
 
     private static int TryGetMateriaCount(BagSlot slot)
     {
-        if (!TryInvokeOptionalLlama(LlamaBagSlotExtensionsType, "MateriaCount", [slot], out var value))
+        if (!OptionalRuntimeInterop.TryInvokeStatic(LlamaBagSlotExtensionsType, "MateriaCount", [slot], out var value))
         {
             return 0;
         }
@@ -264,81 +264,6 @@ public sealed class RebornBuddyProductSnapshotCollector : IProductSnapshotCollec
         }
 
         return null;
-    }
-
-    private static bool TryInvokeOptionalLlama(
-        string typeName,
-        string methodName,
-        object?[] arguments,
-        out object? result)
-    {
-        result = null;
-        try
-        {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var type = assembly.GetType(typeName, throwOnError: false, ignoreCase: false);
-                if (type is null)
-                {
-                    continue;
-                }
-
-                var method = type
-                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Where(candidate => string.Equals(candidate.Name, methodName, StringComparison.Ordinal))
-                    .FirstOrDefault(candidate => ParametersMatch(candidate.GetParameters(), arguments));
-                if (method is null)
-                {
-                    return false;
-                }
-
-                result = method.Invoke(null, arguments);
-                return true;
-            }
-        }
-        catch (TargetInvocationException)
-        {
-            return false;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-        catch (MethodAccessException)
-        {
-            return false;
-        }
-
-        return false;
-    }
-
-    private static bool ParametersMatch(ParameterInfo[] parameters, object?[] arguments)
-    {
-        if (parameters.Length != arguments.Length)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < parameters.Length; index++)
-        {
-            var argument = arguments[index];
-            if (argument is null)
-            {
-                if (parameters[index].ParameterType.IsValueType && Nullable.GetUnderlyingType(parameters[index].ParameterType) is null)
-                {
-                    return false;
-                }
-
-                continue;
-            }
-
-            if (!parameters[index].ParameterType.IsInstanceOfType(argument))
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private static bool IsArmoryBag(InventoryBagId bagId)

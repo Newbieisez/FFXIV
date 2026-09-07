@@ -1,5 +1,6 @@
 using System.Reflection;
 using EZBuddy.Core.Adapters;
+using EZBuddy.RebornBuddy.Interop;
 
 namespace EZBuddy.RebornBuddy.Adapters;
 
@@ -86,23 +87,22 @@ public sealed class LlamaRetainerSweepAdapter : IRetainerSweepAdapter
         version = null;
         failure = string.Empty;
 
-        var assembly = AppDomain.CurrentDomain.GetAssemblies()
-            .FirstOrDefault(candidate => candidate.GetType(HelperTypeName, throwOnError: false, ignoreCase: false) is not null);
-        if (assembly is null)
+        var type = OptionalRuntimeInterop.ResolveType(HelperTypeName);
+        if (type is null)
         {
             failure = "LlamaLibrary retainer helpers are not loaded.";
             return false;
         }
 
-        var type = assembly.GetType(HelperTypeName, throwOnError: false, ignoreCase: false);
-        method = type?.GetMethod(SweepMethodName, BindingFlags.Public | BindingFlags.Static, binder: null, Type.EmptyTypes, modifiers: null)!;
-        if (method is null || !typeof(Task).IsAssignableFrom(method.ReturnType))
+        var resolved = OptionalRuntimeInterop.ResolveStaticMethod(HelperTypeName, SweepMethodName, Type.EmptyTypes);
+        if (resolved is null || !typeof(Task).IsAssignableFrom(resolved.ReturnType))
         {
             failure = "The allowlisted LlamaLibrary CheckVentureTask API is unavailable or incompatible.";
             return false;
         }
 
-        version = assembly.GetName().Version;
+        method = resolved;
+        version = type.Assembly.GetName().Version;
         return true;
     }
 }

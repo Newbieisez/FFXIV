@@ -1,6 +1,7 @@
 using System.Reflection;
 using EZBuddy.Core.Adapters;
 using EZBuddy.Core.Runtime;
+using EZBuddy.RebornBuddy.Interop;
 
 namespace EZBuddy.RebornBuddy.Adapters;
 
@@ -32,7 +33,7 @@ public sealed class LlamaCustomDeliveryAdapter : ICustomDeliveryAdapter
     public Task<AdapterStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var type = ResolveType();
+        var type = OptionalRuntimeInterop.ResolveType(UtilityTypeName);
         if (type is null)
         {
             return Task.FromResult(new AdapterStatus(
@@ -43,7 +44,7 @@ public sealed class LlamaCustomDeliveryAdapter : ICustomDeliveryAdapter
                 DateTimeOffset.UtcNow));
         }
 
-        var method = ResolveSelectionMethod(type);
+        var method = ResolveSelectionMethod();
         if (method is null)
         {
             return Task.FromResult(new AdapterStatus(
@@ -90,8 +91,7 @@ public sealed class LlamaCustomDeliveryAdapter : ICustomDeliveryAdapter
             return false;
         }
 
-        var type = ResolveType();
-        var method = type is null ? null : ResolveSelectionMethod(type);
+        var method = ResolveSelectionMethod();
         if (method is null)
         {
             return false;
@@ -129,47 +129,21 @@ public sealed class LlamaCustomDeliveryAdapter : ICustomDeliveryAdapter
         }
 
         await task.WaitAsync(OperationTimeout, cancellationToken);
-        return ReadTaskResult(task) is true;
+        return OptionalRuntimeInterop.ReadTaskResult<bool>(task);
     }
 
-    private static Type? ResolveType()
-        => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly =>
+    private static MethodInfo? ResolveSelectionMethod()
+        => OptionalRuntimeInterop.ResolveStaticMethod(
+            UtilityTypeName,
+            SelectionMethodName,
+            method =>
             {
-                try
-                {
-                    return assembly.GetType(UtilityTypeName, throwOnError: false, ignoreCase: false);
-                }
-                catch
-                {
-                    return null;
-                }
-            })
-            .FirstOrDefault(type => type is not null);
-
-    private static MethodInfo? ResolveSelectionMethod(Type type)
-        => type.GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .FirstOrDefault(method =>
-                string.Equals(method.Name, SelectionMethodName, StringComparison.Ordinal) &&
-                method.GetParameters().Length == ClientOrder.Length + 1 &&
-                method.GetParameters().Take(ClientOrder.Length).All(parameter => parameter.ParameterType == typeof(bool)) &&
-                method.GetParameters()[^1].ParameterType.IsEnum &&
-                typeof(Task).IsAssignableFrom(method.ReturnType));
-
-    private static bool? ReadTaskResult(Task task)
-    {
-        try
-        {
-            var value = task.GetType()
-                .GetProperty("Result", BindingFlags.Public | BindingFlags.Instance)?
-                .GetValue(task);
-            return value is bool result ? result : null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
+                var parameters = method.GetParameters();
+                return parameters.Length == ClientOrder.Length + 1 &&
+                       parameters.Take(ClientOrder.Length).All(parameter => parameter.ParameterType == typeof(bool)) &&
+                       parameters[^1].ParameterType.IsEnum &&
+                       typeof(Task).IsAssignableFrom(method.ReturnType);
+            });
 
     private static string NormalizeClientKey(string value)
     {

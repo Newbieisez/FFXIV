@@ -1,5 +1,6 @@
 using System.Reflection;
 using EZBuddy.Core.Adapters;
+using EZBuddy.RebornBuddy.Interop;
 
 namespace EZBuddy.RebornBuddy.Adapters;
 
@@ -16,7 +17,7 @@ public sealed class LlamaGrandCompanyAdapter : IGrandCompanyAdapter
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var shopType = ResolveType(ShopTypeName);
+        var shopType = OptionalRuntimeInterop.ResolveType(ShopTypeName);
         if (shopType is null)
         {
             return Task.FromResult(new AdapterStatus(
@@ -27,12 +28,11 @@ public sealed class LlamaGrandCompanyAdapter : IGrandCompanyAdapter
                 DateTimeOffset.UtcNow));
         }
 
-        var buyMethod = shopType.GetMethod(
+        var buyMethod = OptionalRuntimeInterop.ResolveStaticMethod(
+            ShopTypeName,
             "BuyKnownItem",
-            BindingFlags.Public | BindingFlags.Static,
-            binder: null,
-            types: [typeof(uint), typeof(int)],
-            modifiers: null);
+            typeof(uint),
+            typeof(int));
 
         if (buyMethod is null || !typeof(Task).IsAssignableFrom(buyMethod.ReturnType))
         {
@@ -77,14 +77,11 @@ public sealed class LlamaGrandCompanyAdapter : IGrandCompanyAdapter
             return true;
         }
 
-        var shopType = ResolveType(ShopTypeName);
-        var method = shopType?.GetMethod(
+        var method = OptionalRuntimeInterop.ResolveStaticMethod(
+            ShopTypeName,
             "BuyKnownItem",
-            BindingFlags.Public | BindingFlags.Static,
-            binder: null,
-            types: [typeof(uint), typeof(int)],
-            modifiers: null);
-
+            typeof(uint),
+            typeof(int));
         if (method is null)
         {
             return false;
@@ -98,7 +95,7 @@ public sealed class LlamaGrandCompanyAdapter : IGrandCompanyAdapter
         }
 
         await task.WaitAsync(OperationTimeout, cancellationToken);
-        var purchased = ReadTaskResult<int>(task);
+        var purchased = OptionalRuntimeInterop.ReadTaskResult<int>(task);
         return purchased > 0 && currentQuantity + purchased >= targetQuantity;
     }
 
@@ -128,62 +125,25 @@ public sealed class LlamaGrandCompanyAdapter : IGrandCompanyAdapter
         }
 
         await task.WaitAsync(OperationTimeout, cancellationToken);
-        var status = ReadTaskResultObject(task)?.ToString();
+        var status = OptionalRuntimeInterop.ReadTaskResultObject(task)?.ToString();
         return string.Equals(status, "Success", StringComparison.OrdinalIgnoreCase);
     }
 
     private static MethodInfo? ResolveExpertDeliveryMethod()
-    {
-        var type = ResolveType(ExpertDeliveryTypeName);
-        if (type is null)
-        {
-            return null;
-        }
-
-        return type.GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Where(method => string.Equals(method.Name, "DeliverItems", StringComparison.Ordinal))
-            .Where(method => method.GetParameters().Length == 1)
-            .FirstOrDefault(method =>
+        => OptionalRuntimeInterop.ResolveStaticMethod(
+            ExpertDeliveryTypeName,
+            "DeliverItems",
+            method =>
             {
-                var parameterType = method.GetParameters()[0].ParameterType;
-                return parameterType.IsAssignableFrom(typeof(uint[])) ||
-                       parameterType == typeof(IEnumerable<uint>);
+                var parameters = method.GetParameters();
+                if (parameters.Length != 1)
+                {
+                    return false;
+                }
+
+                var parameterType = parameters[0].ParameterType;
+                return (parameterType.IsAssignableFrom(typeof(uint[])) ||
+                        parameterType == typeof(IEnumerable<uint>)) &&
+                       typeof(Task).IsAssignableFrom(method.ReturnType);
             });
-    }
-
-    private static Type? ResolveType(string fullName)
-        => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly =>
-            {
-                try
-                {
-                    return assembly.GetType(fullName, throwOnError: false, ignoreCase: false);
-                }
-                catch
-                {
-                    return null;
-                }
-            })
-            .FirstOrDefault(type => type is not null);
-
-    private static T ReadTaskResult<T>(Task task)
-    {
-        var value = ReadTaskResultObject(task);
-        if (value is T typed)
-        {
-            return typed;
-        }
-
-        try
-        {
-            return value is null ? default! : (T)Convert.ChangeType(value, typeof(T));
-        }
-        catch
-        {
-            return default!;
-        }
-    }
-
-    private static object? ReadTaskResultObject(Task task)
-        => task.GetType().GetProperty("Result", BindingFlags.Public | BindingFlags.Instance)?.GetValue(task);
 }
