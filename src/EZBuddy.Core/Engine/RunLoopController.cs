@@ -22,11 +22,13 @@ public interface IRunLoopController
     RunLoopState State { get; }
     RunLoopStatus Status { get; }
     event EventHandler<RunLoopStatus>? StatusChanged;
+    event EventHandler<string>? StatusReported;
 
     Task StartAsync(CancellationToken cancellationToken = default);
     Task PauseAsync(CancellationToken cancellationToken = default);
     Task ResumeAsync(CancellationToken cancellationToken = default);
     Task StopAsync(CancellationToken cancellationToken = default);
+    Task<ExecutionResult> TickAsync(CancellationToken cancellationToken = default);
 
     Task ApplyPendingSignalsAsync(CancellationToken cancellationToken = default);
     void ObserveEngineState();
@@ -78,6 +80,7 @@ public sealed class RunLoopController : IRunLoopController
     }
 
     public event EventHandler<RunLoopStatus>? StatusChanged;
+    public event EventHandler<string>? StatusReported;
 
     public Task StartAsync(CancellationToken cancellationToken = default)
         => QueueSignalAsync(RunLoopSignal.Start, cancellationToken);
@@ -90,6 +93,22 @@ public sealed class RunLoopController : IRunLoopController
 
     public Task StopAsync(CancellationToken cancellationToken = default)
         => QueueSignalAsync(RunLoopSignal.Stop, cancellationToken);
+
+    public async Task<ExecutionResult> TickAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await ApplyPendingSignalsAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!_queue.IsRunning)
+        {
+            ObserveEngineState();
+            return ExecutionResult.Yield(Status.Message);
+        }
+
+        var result = await _queue.TickAsync(cancellationToken).ConfigureAwait(false);
+        ObserveEngineState();
+        return result;
+    }
 
     public async Task ApplyPendingSignalsAsync(CancellationToken cancellationToken = default)
     {
@@ -213,5 +232,6 @@ public sealed class RunLoopController : IRunLoopController
         }
 
         StatusChanged?.Invoke(this, next);
+        StatusReported?.Invoke(this, message);
     }
 }
